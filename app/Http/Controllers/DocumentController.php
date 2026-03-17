@@ -165,13 +165,13 @@ class DocumentController extends Controller
     {
         $client = new \GuzzleHttp\Client();
 
-        $username = "rae.admin";
-        $password = "Jng@2024";
+        $username = config('mfiles.storefront.username');
+        $password = config('mfiles.storefront.password');
 
         $headers = [
             'X-Username'=> $username,
             'X-Password'=> $password,
-            'X-Vault'=>"DF00F177-C725-4EB7-AC98-A557D1245361"
+            'X-Vault'=> config('mfiles.mfiles_vaultid')
         ];
 
         $objectId = config('mfile_sf_obj_id');
@@ -309,14 +309,14 @@ class DocumentController extends Controller
     public function view(String $id,String $filename){
         $get_token = $this->getToken();
         $objectId = config('mfile_sf_obj_id');
-        $username = "rae.admin";
-        $password = "Jng@2024";
+        $username = config('mfiles.storefront.username');
+        $password = config('mfiles.storefront.password');
         $headers = [
             // 'x-authentication' => $get_token['token'],
             'X-Username'=> $username,
             'X-Password'=>$password,
             // 'Cookie'           => $get_token['setCookie'],
-            'X-Vault'=>"DF00F177-C725-4EB7-AC98-A557D1245361"
+            'X-Vault'=> config('mfiles.mfiles_vaultid')
         ];
         $client = new Client();
         $headers = [
@@ -324,7 +324,7 @@ class DocumentController extends Controller
             'X-Username'=> $username,
             'X-Password'=>$password,
             // 'Cookie'           => $get_token['setCookie'],
-            'X-Vault'=>"DF00F177-C725-4EB7-AC98-A557D1245361"
+            'X-Vault'=> config('mfiles.mfiles_vaultid')
         ];
         $uac = UploadAndConvert::findOrFail($id);
         try{
