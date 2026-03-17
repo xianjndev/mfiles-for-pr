@@ -49,5 +49,5 @@ Route::post('mfiles/storefront/convert',[\App\Http\Controllers\DocumentControlle
     ->middleware('auth:sanctum')
     ->name('mfiles.storefront.convert');
 Route::get('mfiles/storefront/{id}/view/{filename}',[\App\Http\Controllers\DocumentController::class,'view'])
-    ->middleware('auth:sanctum')
+//    ->middleware('auth:sanctum')
     ->name('documents.storefront.view');
