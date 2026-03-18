@@ -180,7 +180,41 @@ class DocumentController extends Controller
         $uploadData = is_array($request->data) ? $request->data : json_decode($request->data, true);
 
         try {
-
+            // Step 0
+            $body = [
+                "PropertyValues" => [
+                    [
+                        "PropertyDef" => 0,
+                        "TypedValue" => [
+                            "DataType" => 1,
+                            "Value" => Carbon::now()->timestamp."_document_generated"
+                        ]
+                    ],
+                    [
+                        "PropertyDef" => 22,
+                        "TypedValue" => [
+                            "DataType" => 8,
+                            "Value" => false
+                        ]
+                    ],
+                    [
+                        "PropertyDef" => 100,
+                        "TypedValue" => [
+                            "DataType" => 9,
+                            "Lookup" => [
+                                "Item" => 0,
+                                "Version" => -1
+                            ]
+                        ]
+                    ]
+                ],
+                "Files" => []
+            ];
+            $url = $this->baseURL() . '/REST/objects/0?checkIn=true';
+            $guzzleRequest = new GuzzleRequest('POST', $url, $headers, json_encode($body));
+            $res = $client->sendAsync($guzzleRequest)->wait();
+            $response = json_decode($res->getBody()->getContents(), true);
+            $objectId=   $response['DisplayID'] ?? null;
             /*
             |--------------------------------------------------------------------------
             | STEP 1: Process DOCX Template
@@ -212,7 +246,7 @@ class DocumentController extends Controller
             |--------------------------------------------------------------------------
             */
 
-            $uploadUrl = $this->baseURL() . "/REST/objects/0/{$objectId}/files";
+            $uploadUrl = $this->baseURL() . "/REST/objects/0/{$objectId}/files"."?checkIn=true";
 
             $multipart = [[
                 'name'     => 'file',
@@ -267,15 +301,17 @@ class DocumentController extends Controller
                 'request_from_website' => $request->from ?? '',
                 'user_id'              => $request->from_user_id ?? '',
                 'user_name'            => $request->from_user_name ?? '',
-                'object_id'            => $fileId,
+                'object_id'            => $objectId,
+                'file_id'              => $fileId,
                 'data'                 => $request->data ?? '',
                 'file_name'            => $generatedFileName,
                 'link'                 => $viewUrl,
+                'mfiles_view_link'     => $viewUrl,
                 'file_size'            => number_format($fileSize / 1024, 2) . ' KB',
                 'expires_at'           => now()->addDays(7),
             ]);
 
-            $uac->link = config('app.url') . "/api/mfiles/storefront/{$uac->id}/view/{$generatedFileName}";
+            $uac->link = config('app.url') . "/api/mfiles/storefront/{$uac->id}/view/{$generatedFileName}/{$generatedFileName}.pdf";
             $uac->save();
 
             /*
@@ -329,7 +365,8 @@ class DocumentController extends Controller
         $uac = UploadAndConvert::findOrFail($id);
         try{
             // $objectURL =$this->baseURL()."/REST/objects/0/723368/files/".$fileId."/content.aspx?filePreview=true&format=pdf" ;
-            $objectURL =$this->baseURL()."/REST/objects/0/".$objectId."/files/".$uac->object_id."/content.aspx?format=pdf" ;
+//            $objectURL =$this->baseURL()."/REST/objects/0/".$objectId."/files/".$uac->object_id."/content.aspx?format=pdf" ;
+            $objectURL = $uac->mfiles_view_link;
             $request = new GuzzleRequest('GET', $objectURL, $headers);
             $res = $client->sendAsync($request)->wait();
             $responseBody = $res->getBody()->getContents();
