@@ -905,12 +905,13 @@ class MfilesController extends Controller
         if(config("cs.property_lookup")){
             try {
                 // Example API endpoint
-
-                $baseURL = "https://everyhome.enclavewrx.io/developers/";
+                $project_code = explode( "-",$propertyValue);
+                $baseURL = $this->getBaseURL($project_code[0]);
                 $url = $baseURL.'api_storefront_seller/get_technical_description/'.$propertyValue;
                 $client = new Client();
                 $response = $client->get($url);
                 $response_message = (string) $response->getBody();
+
                 return response()->json($response_message);
 
             } catch (\Exception $e) {
