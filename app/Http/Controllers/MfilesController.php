@@ -13,7 +13,7 @@ use Carbon\Carbon;
 class MfilesController extends Controller
 {
     private function baseURL(){
-        return config('mfiles_baseurl');
+        return config('mfiles.mfiles_baseurl');
     }
     public function get_datatype($value)
     {
@@ -119,15 +119,17 @@ class MfilesController extends Controller
     public function get_token(Request $request)
     {
         $authURL = $this->baseURL().'/REST/server/authenticationtokens';
-        $username = !$request->Credentials?config('mfiles_credentials.username'):$request->Credentials['Username'];
-        $password = !$request->Credentials?config('mfiles_credentials.password'):$request->Credentials['Password'];
+        $username = !$request->Credentials?config('mfiles.mfiles_credentials.username'):$request->Credentials['Username'];
+        $password = !$request->Credentials?config('mfiles.mfiles_credentials.password'):$request->Credentials['Password'];
         $credential = [
             'Username'  => $username,
             'Password'  => $password,
-            'VaultGuid' => config('mfiles_vaultid') // $request->input('vaultid') -- change to Param if multiple vault
+            'VaultGuid' => config('mfiles.mfiles_vaultid') // $request->input('vaultid') -- change to Param if multiple vault
         ];
 
+
         $client = new Client();
+
         try {
             $response = $client->post($authURL,[
                 'json' => $credential ,
@@ -501,6 +503,40 @@ class MfilesController extends Controller
 
     }
     public function get_document_property(Request $request, $ObjectID = null, $propertyID = null){
+         //added only for CS lookup
+         if(config("cs.property_lookup")){
+            // $pbl;
+            try {
+
+                // Example API endpoint
+                if($request->propertyID===1050)
+                {
+                    $baseURL = $this->getBaseURL($request->name);
+                    $url = $baseURL."api_storefront_seller/get_project_detail/".$request->name;
+                }
+                if($request->propertyID===1105)
+                {
+                    $pbl=explode("-",$request->name);
+                    $baseURL = $this->getBaseURL($pbl[0]);
+
+                    $url = $baseURL."api_storefront_seller/get_property_detail/".$request->name;
+                }
+                $client = new Client();
+                $response = $client->get($url);
+                $response_message = json_decode($response->getBody(), true);
+
+                return response()->json($response_message);
+            } catch (\Exception $e) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Request error: ' . $e->getMessage()
+                ], 500);
+            }
+
+
+        }
+        //end CS lookup
+        
         $objectID = $objectID ?? $request->objectID;
         $propertyID = $propertyID ?? $request->propertyID;
 
@@ -541,6 +577,40 @@ class MfilesController extends Controller
         }
     }
     public function get_document_property_multi(Request $request, $ObjectID = null, $propertyID = null){
+
+        //added only for CS lookup
+        if(config("cs.property_lookup")){
+            // $pbl;
+            try {
+
+                // Example API endpoint
+                if($request->propertyID===1050)
+                {
+                    $baseURL = $this->getBaseURL($request->name);
+                    $url = "https://everyhome.enclavewrx.io/developers/api_storefront_seller/get_project_detail/".$request->name;
+                }
+                if($request->propertyID===1105)
+                {
+                    $pbl=explode("-",$request->name);
+                    $baseURL = $this->getBaseURL($pbl[0]);
+
+                    $url = $baseURL."api_storefront_seller/get_property_detail/".$request->name;
+                }
+                $client = new Client();
+                $response = $client->get($url);
+                $response_message = json_decode($response->getBody(), true);
+
+                return response()->json($response_message);
+            } catch (\Exception $e) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Request error: ' . $e->getMessage()
+                ], 500);
+            }
+
+
+        }
+        //end CS lookup
         $objectID = $objectID ?? $request->objectID;
         $propertyID = $propertyID ?? $request->propertyID;
         // dd($request->Documents[0]);
@@ -832,6 +902,28 @@ class MfilesController extends Controller
         }
     }
     public function get_technical_description(Request $request, $propertyValue = null){
+        //added only for CS lookup
+       
+        if(config("cs.property_lookup")){
+            try {
+                // Example API endpoint
+                $project_code = explode( "-",$propertyValue);
+                $baseURL = $this->getBaseURL($project_code[0]);
+                $url = $baseURL.'api_storefront_seller/get_technical_description/'.$propertyValue;
+                $client = new Client();
+                $response = $client->get($url);
+                $response_message = (string) $response->getBody();
+
+                return response()->json($response_message);
+
+            } catch (\Exception $e) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Request error: ' . $e->getMessage()
+                ], 500);
+            }
+        }
+        //end CS lookup
         $get_token = $this->get_token($request);
         $objectURL =$this->baseURL()."/REST/objects/119?p1105=".$propertyValue ;
         $client = new Client();
@@ -866,5 +958,25 @@ class MfilesController extends Controller
         } catch (\Exception $e) {
             return response()->json(['error' => 'Error in searching object: ' . $e->getMessage()], 404);
         }
+    }
+    public function getBaseURL($project_code){
+        $rdg = json_decode(config('cs.rdg_code', '[]'), true);
+        $ehdg = json_decode(config('cs.ehdg_code', '[]'), true);
+        $shdg = json_decode(config('cs.shdg_code', '[]'), true);
+
+        if (in_array($project_code, $rdg)) {
+            $baseURL = "https://elanvital.enclavewrx.io/developers/";
+        }
+        else if (in_array($project_code, $ehdg)) {
+            $baseURL = "https://everyhome.enclavewrx.io/developers/";
+        }
+        else if (in_array($project_code, $shdg)) {
+            $baseURL = "https://extraordinary.enclavewrx.io/developers/";
+        }
+        else {
+            $baseURL = "https://elanvital.enclavewrx.io/developers/";
+        }
+
+        return $baseURL;
     }
 }
