@@ -311,7 +311,7 @@ class DocumentController extends Controller
                 'expires_at'           => now()->addDays(7),
             ]);
 
-            $uac->link = config('app.url') . "/api/mfiles/storefront/{$uac->id}/view/{$generatedFileName}/{$generatedFileName}.pdf";
+            $uac->link = config('app.url') . "/api/mfiles/storefront/{$uac->id}/view/{$generatedFileName}.pdf";
             $uac->save();
 
             /*
