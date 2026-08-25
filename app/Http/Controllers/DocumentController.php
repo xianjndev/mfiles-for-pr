@@ -13,7 +13,7 @@ use PhpOffice\PhpWord\TemplateProcessor;
 class DocumentController extends Controller
 {
     private function baseURL(){
-        return env("MFILES_BASEURL","https://raemulanlands.cloudvault.m-files.com");
+        return config('mfiles.mfiles_baseurl');
     }
 
     public function getToken(){
@@ -21,7 +21,7 @@ class DocumentController extends Controller
         $credential = [
             'Username'  => config('mfiles.mfiles_credentials.username'),
             'Password'  => config('mfiles.mfiles_credentials.password'),
-            'VaultGuid' => env('MFILES_VAULTID',"DF00F177-C725-4EB7-AC98-A557D1245361")
+            'VaultGuid' => config('mfiles.mfiles_vaultid')
         ];
         $client = new Client();
         try {
@@ -51,12 +51,12 @@ class DocumentController extends Controller
     public function get_token(Request $request)
     {
         $authURL = $this->baseURL().'/REST/server/authenticationtokens';
-        $username = !$request->Credentials?env("MFILES_ADMIN_USER"):$request->Credentials['Username'];
-        $password = !$request->Credentials?env("MFILES_ADMIN_PASS"):$request->Credentials['Password'];
+        $username = !$request->Credentials?config('mfiles.mfiles_credentials.username'):$request->Credentials['Username'];
+        $password = !$request->Credentials?config('mfiles.mfiles_credentials.password'):$request->Credentials['Password'];
         $credential = [
             'Username'  => $username,
             'Password'  => $password,
-            'VaultGuid' => env('MFILES_VAULTID',"DF00F177-C725-4EB7-AC98-A557D1245361")
+            'VaultGuid' => config('mfiles.mfiles_vaultid')
         ];
 
 
@@ -95,7 +95,7 @@ class DocumentController extends Controller
             'x-authentication' => $get_token['token'],
             'Cookie' => $get_token['setCookie'],
         ];
-        $objectId = env("MFILES_STOREFRONT_OBJECT_ID",723368);
+        $objectId = config('mfiles.mfile_sf_obj_id');
 
         $uploadFile = $request->file('uploadFile');
         $fileName = $uploadFile->getClientOriginalName();
@@ -136,7 +136,7 @@ class DocumentController extends Controller
 
     public function view_storefront_document(Request $request, $fileId){
         $get_token = $this->get_token($request);
-        $objectId = env("MFILES_STOREFRONT_OBJECT_ID",723368);
+        $objectId = config('mfile_sf_obj_id');
         $client = new Client();
         $headers = [
             'x-authentication' => $get_token['token'],
@@ -215,7 +215,14 @@ class DocumentController extends Controller
                 'displayID'  => $response['DisplayID'] ?? null,
             ]);
         } catch (\Exception $e) {
+
+            logger()->error('M-Files Upload Error', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
             $error = $e->getMessage();
+
             if (method_exists($e, 'getResponse') && $e->getResponse()) {
                 $error = $e->getResponse()->getBody()->getContents();
             }
