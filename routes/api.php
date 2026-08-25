@@ -3,6 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\MfilesController;
+use App\Http\Controllers\BuyerController;
 use Homeful\Paymate\Paymate;
 
 Route::get('/user', function (Request $request) {
@@ -49,5 +50,38 @@ Route::post('mfiles/storefront/convert',[\App\Http\Controllers\DocumentControlle
     ->middleware('auth:sanctum')
     ->name('mfiles.storefront.convert');
 Route::get('mfiles/storefront/{id}/view/{filename}',[\App\Http\Controllers\DocumentController::class,'view'])
-//    ->middleware('auth:sanctum')
+    // ->middleware('auth:sanctum')
     ->name('documents.storefront.view');
+
+// Route::post('mfiles/create/buyers',  [BuyerController::class, 'create_buyers'])
+// ->middleware('auth:sanctum')
+// ->name('create buyer folder');
+// Route::post('mfiles/{buyerId}/upload/{documentCode}',  [BuyerController::class, 'upload_document']   )
+// ->middleware('auth:sanctum')
+// ->name('upload document');
+// Route::get('mfiles/{buyerId}/documents',  [BuyerController::class, 'get_documents']   )
+// ->middleware('auth:sanctum')
+// ->name('search documents');
+// Route::get('mfiles/{buyerId}/{documentCode}',  [BuyerController::class, 'get_document']   )
+// ->middleware('auth:sanctum')
+// ->name('search document');
+
+Route::get('mfiles/object/{classID}', [BuyerController::class, 'get_object_information'])
+->middleware('auth:sanctum');
+Route::post('mfiles/create/buyers',  [BuyerController::class, 'create_buyers'])->name('create buyer folder')
+->middleware('auth:sanctum');
+Route::post('mfiles/{buyerId}/upload/{documentCode}',  [BuyerController::class, 'upload_document']   )
+->middleware('auth:sanctum')
+->name('upload document');
+Route::post('mfiles/{buyerId}/update/{documentCode}',  [BuyerController::class, 'update_document']   )
+->middleware('auth:sanctum')
+->name('update document');
+Route::post('mfiles/{buyerId}/delete/{documentCode}',  [BuyerController::class, 'delete_document']   )
+->middleware('auth:sanctum')
+->name('delete document');
+Route::get('mfiles/{buyerId}/documents',  [BuyerController::class, 'get_documents']   )
+->middleware('auth:sanctum')
+->name('search documents');
+Route::get('mfiles/{buyerId}/{documentCode}',  [BuyerController::class, 'get_document']   )
+->middleware('auth:sanctum')
+->name('search document');
