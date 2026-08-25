@@ -13,7 +13,7 @@ use Carbon\Carbon;
 class MfilesController extends Controller
 {
     private function baseURL(){
-        return env("MFILES_BASEURL","https://raemulanlands.cloudvault.m-files.com");
+        return config('mfiles.mfiles_baseurl');
     }
     public function get_datatype($value)
     {
@@ -119,15 +119,17 @@ class MfilesController extends Controller
     public function get_token(Request $request)
     {
         $authURL = $this->baseURL().'/REST/server/authenticationtokens';
-        $username = !$request->Credentials?env("MFILES_ADMIN_USER"):$request->Credentials['Username'];
-        $password = !$request->Credentials?env("MFILES_ADMIN_PASS"):$request->Credentials['Password'];
+        $username = !$request->Credentials?config('mfiles.mfiles_credentials.username'):$request->Credentials['Username'];
+        $password = !$request->Credentials?config('mfiles.mfiles_credentials.password'):$request->Credentials['Password'];
         $credential = [
             'Username'  => $username,
             'Password'  => $password,
-            'VaultGuid' => env('MFILES_VAULTID',"DF00F177-C725-4EB7-AC98-A557D1245361") // $request->input('vaultid') -- change to Param if multiple vault
+            'VaultGuid' => config('mfiles.mfiles_vaultid') // $request->input('vaultid') -- change to Param if multiple vault
         ];
 
+
         $client = new Client();
+
         try {
             $response = $client->post($authURL,[
                 'json' => $credential ,
@@ -436,7 +438,7 @@ class MfilesController extends Controller
             'x-authentication' => $get_token['token'],
             'Cookie' => $get_token['setCookie'],
         ];
-        $objectId = env("MFILES_STOREFRONT_OBJECT_ID",723368);
+        $objectId = config('mfile_sf_obj_id');
 
         $uploadFile = $request->file('uploadFile');
         $fileName = $uploadFile->getClientOriginalName();
@@ -476,7 +478,7 @@ class MfilesController extends Controller
     }
     public function view_storefront_document(Request $request, $fileId){
         $get_token = $this->get_token($request);
-        $objectId = env("MFILES_STOREFRONT_OBJECT_ID",723368);
+        $objectId = config('mfile_sf_obj_id');
         $client = new Client();
         $headers = [
             'x-authentication' => $get_token['token'],
@@ -501,9 +503,86 @@ class MfilesController extends Controller
 
     }
     public function get_document_property(Request $request, $ObjectID = null, $propertyID = null){
+         //added only for CS lookup
+
+        //  if(config("cs.property_lookup")){
+        //     // $pbl;
+        //     try {
+
+        //         // Example API endpoint
+        //         if($request->propertyID===1050)
+        //         {
+        //             $baseURL = $this->getBaseURL($request->name);
+        //             $url = $baseURL."api_storefront_seller/get_project_detail/".$request->name;
+        //         }
+        //         if($request->propertyID===1105)
+        //         {
+        //             $pbl=explode("-",$request->name);
+        //             $baseURL = $this->getBaseURL($pbl[0]);
+
+        //             $url = $baseURL."api_storefront_seller/get_property_detail/".$request->name;
+        //         }
+        //         $client = new Client();
+        //         $response = $client->get($url);
+        //         $response_message = json_decode($response->getBody(), true);
+
+        //         return response()->json($response_message);
+        //     } catch (\Exception $e) {
+        //         return response()->json([
+        //             'status' => 'error',
+        //             'message' => 'Request error: ' . $e->getMessage()
+        //         ], 500);
+        //     }
+
+
+        // }
+        //end CS lookup
+        
+        // Comment Out below based on new update of sir gari - Aug 25, 2026
+
+        // $objectID = $objectID ?? $request->objectID;
+        // $propertyID = $propertyID ?? $request->propertyID;
+
+        // $get_token = $this->get_token($request);
+        // $objectURL =$this->baseURL()."/REST/objects/".$objectID."?p".$propertyID."=".$request->name ;
+        // $client = new Client();
+        // $headers = [
+        //     'x-authentication' => $get_token['token'],
+        //     'Content-Type' => 'application/json',
+        //     'Cookie' => $get_token['setCookie']
+        // ];
+        // // dd($headers);
+        // try{
+        //     $requestObj = new GuzzleRequest('GET', $objectURL, $headers);
+        //     $res = $client->sendAsync($requestObj)->wait();
+        //     $responseBody = $res->getBody()->getContents();
+        //     $res = json_decode($responseBody);
+        //     if(count($res->Items) == 0){
+        //         return response()->json(['error' => 'Object not found'], 404);
+        //     }
+        //     $objID = $res->Items[0]->DisplayID;
+        //     foreach ($request->property_ids as $prop_id){
+        //         $prop_def = $this->get_property_definition($headers,$prop_id);
+        //         $prop_value = $this->get_property_value($headers,$objectID."/".$objID."/latest/properties/".$prop_id);
+        //         if($prop_id == 1285){
+        //             $short_start = explode('Bounded on the', $prop_value);
+        //             $short_end = explode('point of beginning', $prop_value);
+        //             $prop_value = ($short_start[0] ." Bounded on the XXXX to the point of beginning".$short_end[1]);
+        //         }
+
+        //         $result[$prop_def['name']] = $prop_value ;
+
+        //     }
+        //     // return $result;
+        //     return response()->json($result);
+        // } catch (\Exception $e) {
+        //     return response()->json(['error' => 'Error in searching object: ' . $e->getMessage()], 404);
+        // }
+
+        // End of comment out based on new update of sir gari - Aug 25, 2026
+
         $objectID = $objectID ?? $request->objectID;
         $propertyID = $propertyID ?? $request->propertyID;
-
         $get_token = $this->get_token($request);
         $objectURL =$this->baseURL()."/REST/objects/".$objectID."?p".$propertyID."=".$request->name ;
         $client = new Client();
@@ -512,7 +591,24 @@ class MfilesController extends Controller
             'Content-Type' => 'application/json',
             'Cookie' => $get_token['setCookie']
         ];
-        // dd($headers);
+        // dd($propertyID);
+        $customPropIDs=[
+            1332 => "portion_of_lot" , 
+            1333 => "lrc_record_no" , 
+            1334 => "land_owner_claimant" , 
+            1335 => "location" , 
+            1336 => "area" , 
+            1337 => "description_of_corners" , 
+            1338 => "bearings" , 
+            1339 => "original_date_of_survey" , 
+            1340 => "date_of_survey" , 
+            1341 => "date_approved" , 
+            1342 => "geodetic_engineer" 
+        ];
+        $propery_ids = array_unique(array_merge(
+            (array) $request->property_ids,
+            [1332, 1333, 1334, 1335, 1336, 1337, 1338, 1339, 1340, 1341, 1342]
+        ));
         try{
             $requestObj = new GuzzleRequest('GET', $objectURL, $headers);
             $res = $client->sendAsync($requestObj)->wait();
@@ -522,25 +618,72 @@ class MfilesController extends Controller
                 return response()->json(['error' => 'Object not found'], 404);
             }
             $objID = $res->Items[0]->DisplayID;
-            foreach ($request->property_ids as $prop_id){
-                $prop_def = $this->get_property_definition($headers,$prop_id);
+            // dd($propery_ids);
+            foreach ($propery_ids as $prop_id){ 
+                if (isset($customPropIDs[$prop_id])) {
+                    $prop_name = $customPropIDs[$prop_id];
+                } 
+                else {
+                $prop_def = $this->get_property_definition($headers, $prop_id);
+                $prop_name = $prop_def['name'] ?? 'property_' . $prop_id;
+                 }
+                // $prop_def = $this->get_property_definition($headers,$prop_id);
                 $prop_value = $this->get_property_value($headers,$objectID."/".$objID."/latest/properties/".$prop_id);
                 if($prop_id == 1285){
-                    $short_start = explode('Bounded on the', $prop_value);
-                    $short_end = explode('point of beginning', $prop_value);
-                    $prop_value = ($short_start[0] ." Bounded on the XXXX to the point of beginning".$short_end[1]);
-                }
+                    if($prop_value){
+                        $short_start = explode('Bounded on the', $prop_value);
+                        $short_end = explode('point of beginning', $prop_value);
+                        $prop_value = ($short_start[0] ." Bounded on the XXXX to the point of beginning".$short_end[1]);
+                        $result['old_technical_desc'] = $prop_value ;
+                    }
 
-                $result[$prop_def['name']] = $prop_value ;
-
+               }
+                // $result[$prop_def['name']] = $prop_value ;
+                $result[$prop_name] = $prop_value;
             }
+
             // return $result;
-            return response()->json($result);
+             return response()->json($result);
         } catch (\Exception $e) {
             return response()->json(['error' => 'Error in searching object: ' . $e->getMessage()], 404);
         }
+
     }
     public function get_document_property_multi(Request $request, $ObjectID = null, $propertyID = null){
+
+        //added only for CS lookup
+        // if(config("cs.property_lookup")){
+        //     // $pbl;
+        //     try {
+
+        //         // Example API endpoint
+        //         if($request->propertyID===1050)
+        //         {
+        //             $baseURL = $this->getBaseURL($request->name);
+        //             $url = "https://everyhome.enclavewrx.io/developers/api_storefront_seller/get_project_detail/".$request->name;
+        //         }
+        //         if($request->propertyID===1105)
+        //         {
+        //             $pbl=explode("-",$request->name);
+        //             $baseURL = $this->getBaseURL($pbl[0]);
+
+        //             $url = $baseURL."api_storefront_seller/get_property_detail/".$request->name;
+        //         }
+        //         $client = new Client();
+        //         $response = $client->get($url);
+        //         $response_message = json_decode($response->getBody(), true);
+
+        //         return response()->json($response_message);
+        //     } catch (\Exception $e) {
+        //         return response()->json([
+        //             'status' => 'error',
+        //             'message' => 'Request error: ' . $e->getMessage()
+        //         ], 500);
+        //     }
+
+
+        // }
+        //end CS lookup
         $objectID = $objectID ?? $request->objectID;
         $propertyID = $propertyID ?? $request->propertyID;
         // dd($request->Documents[0]);
@@ -832,6 +975,29 @@ class MfilesController extends Controller
         }
     }
     public function get_technical_description(Request $request, $propertyValue = null){
+        //added only for CS lookup
+       
+        // if(config("cs.property_lookup")){
+        //     try {
+        //         // Example API endpoint
+        //         $project_code = explode( "-",$propertyValue);
+        //         $baseURL = $this->getBaseURL($project_code[0]);
+        //         $url = $baseURL.'api_storefront_seller/get_technical_description/'.$propertyValue;
+        //         $client = new Client();
+        //         $response = $client->get($url);
+        //         $response_message = (string) $response->getBody();
+
+        //         dd($url);
+        //         return response()->json($response_message);
+
+        //     } catch (\Exception $e) {
+        //         return response()->json([
+        //             'status' => 'error',
+        //             'message' => 'Request error: ' . $e->getMessage()
+        //         ], 500);
+        //     }
+        // }
+        //end CS lookup
         $get_token = $this->get_token($request);
         $objectURL =$this->baseURL()."/REST/objects/119?p1105=".$propertyValue ;
         $client = new Client();
@@ -866,5 +1032,25 @@ class MfilesController extends Controller
         } catch (\Exception $e) {
             return response()->json(['error' => 'Error in searching object: ' . $e->getMessage()], 404);
         }
+    }
+    public function getBaseURL($project_code){
+        $rdg = json_decode(config('cs.rdg_code', '[]'), true);
+        $ehdg = json_decode(config('cs.ehdg_code', '[]'), true);
+        $shdg = json_decode(config('cs.shdg_code', '[]'), true);
+
+        if (in_array($project_code, $rdg)) {
+            $baseURL = "https://elanvital.enclavewrx.io/developers/";
+        }
+        else if (in_array($project_code, $ehdg)) {
+            $baseURL = "https://everyhome.enclavewrx.io/developers/";
+        }
+        else if (in_array($project_code, $shdg)) {
+            $baseURL = "https://extraordinary.enclavewrx.io/developers/";
+        }
+        else {
+            $baseURL = "https://elanvital.enclavewrx.io/developers/";
+        }
+
+        return $baseURL;
     }
 }
