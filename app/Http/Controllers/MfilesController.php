@@ -9,6 +9,8 @@ use GuzzleHttp\Psr7\Utils;
 use Illuminate\Support\Facades\Storage;
 use GuzzleHttp\Psr7\MultipartStream;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Crypt;
+use App\Support\EncryptedRouteParameter;
 
 class MfilesController extends Controller
 {
@@ -438,7 +440,7 @@ class MfilesController extends Controller
             'x-authentication' => $get_token['token'],
             'Cookie' => $get_token['setCookie'],
         ];
-        $objectId = config('mfile_sf_obj_id');
+        $objectId = config('mfiles.mfile_sf_obj_id');
 
         $uploadFile = $request->file('uploadFile');
         $fileName = $uploadFile->getClientOriginalName();
@@ -478,7 +480,7 @@ class MfilesController extends Controller
     }
     public function view_storefront_document(Request $request, $fileId){
         $get_token = $this->get_token($request);
-        $objectId = config('mfile_sf_obj_id');
+        $objectId = config('mfiles.mfile_sf_obj_id');
         $client = new Client();
         $headers = [
             'x-authentication' => $get_token['token'],
@@ -592,23 +594,27 @@ class MfilesController extends Controller
             'Cookie' => $get_token['setCookie']
         ];
         // dd($propertyID);
-        $customPropIDs=[
-            1332 => "portion_of_lot" , 
-            1333 => "lrc_record_no" , 
-            1334 => "land_owner_claimant" , 
-            1335 => "location" , 
-            1336 => "area" , 
-            1337 => "description_of_corners" , 
-            1338 => "bearings" , 
-            1339 => "original_date_of_survey" , 
-            1340 => "date_of_survey" , 
-            1341 => "date_approved" , 
-            1342 => "geodetic_engineer" 
-        ];
-        $propery_ids = array_unique(array_merge(
-            (array) $request->property_ids,
-            [1332, 1333, 1334, 1335, 1336, 1337, 1338, 1339, 1340, 1341, 1342]
-        ));
+        if($objectID==119){
+            $customPropIDs = [
+                1332 => "portion_of_lot",
+                1333 => "lrc_record_no",
+                1334 => "land_owner_claimant",
+                1335 => "location",
+                1336 => "area",
+                1337 => "description_of_corners",
+                1338 => "bearings",
+                1339 => "original_date_of_survey",
+                1340 => "date_of_survey",
+                1341 => "date_approved",
+                1342 => "geodetic_engineer"
+            ];
+            $propery_ids = array_unique(array_merge(
+                (array) $request->property_ids,
+                [1332, 1333, 1334, 1335, 1336, 1337, 1338, 1339, 1340, 1341, 1342]
+            ));
+        }else{
+            $propery_ids = $request->property_ids;
+        }
         try{
             $requestObj = new GuzzleRequest('GET', $objectURL, $headers);
             $res = $client->sendAsync($requestObj)->wait();
@@ -1052,5 +1058,188 @@ class MfilesController extends Controller
         }
 
         return $baseURL;
+    }
+
+    public function view_storefront_video(Request $request, $fileId)
+    {
+        $get_token = $this->get_token($request);
+        $objectId = config("mfiles.mfile_sf_obj_id");
+        $client = new Client();
+
+        $headers = [
+            'x-authentication' => $get_token['token'],
+            'Content-Type' => 'application/json',
+            'Cookie' => $get_token['setCookie']
+        ];
+
+        try {
+            $objectURL = $this->baseURL() . "/REST/objects/0/{$objectId}/files/{$fileId}/content.aspx";
+            $rangeHeader = $request->header('Range', 'bytes=0-');
+
+            $response = $client->get($objectURL, [
+                'headers' => array_merge($headers, [
+                    'Range' => $rangeHeader,
+                ]),
+                'stream' => true,
+            ]);
+
+            $statusCode = $response->getStatusCode();
+            $body = $response->getBody();
+
+            return response()->stream(function () use ($body) {
+                while (!$body->eof()) {
+                    echo $body->read(1024 * 8);
+                    ob_flush();
+                    flush();
+                }
+            }, $statusCode, [
+                'Content-Type' => 'video/mp4',
+                'Content-Disposition' => 'inline; filename="video.mp4"',
+                'Accept-Ranges' => 'bytes',
+                'Cache-Control' => 'no-cache',
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Video not found or cannot be streamed'], 500);
+        }
+    }
+
+    public function get_inventory_list($headers, $project = null,$propertyCode = null)
+    {
+        $objectID = 119;// $objectID ?? $request->objectID;
+        $propertyID = 1105;// $propertyID ?? $request->propertyID;
+        $client = new Client();
+
+        try {
+            $objPropertyURL = $this->baseURL() . "/REST/objects/" . $objectID . "?limit=5";
+            if($project){
+                $objPropertyURL = $objPropertyURL."&p1050=".$project ;
+            }
+            if($propertyCode){
+                $objPropertyURL = $objPropertyURL."&p1105=".$propertyCode ;
+            }
+            
+            $requestProp = new GuzzleRequest('GET', $objPropertyURL, $headers);
+            $resProp = $client->sendAsync($requestProp)->wait();
+            $responseBodyProp = json_decode($resProp->getBody()->getContents());
+            $arr_inventory = $responseBodyProp->Items;
+            if($arr_inventory==null){
+             return null;
+            }
+            foreach ($arr_inventory as $inv_item) {
+                // $inventory_list[]=
+                $inventory_list[] = $inv_item->Title;
+            }
+            $inventory_list = array_values(
+                array_unique($inventory_list)
+            );
+            // dd($inventory_list);
+            return $inventory_list;
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Error in getting property value: ' . $e->getMessage()], 500);
+        }
+    }
+
+    public function sync_properties(Request $request)
+    {
+        $objectID = 119;// $objectID ?? $request->objectID;
+        $propertyID = 1105;// $propertyID ?? $request->propertyID;
+        $projectCode = $request->projectCode ?? null;
+        $propertyCode = $request->propertyCode ?? null;
+        // dd($projectCode);
+        $get_token = $this->get_token($request);
+      
+        $headers = [
+            'x-authentication' => $get_token['token'],
+            'Content-Type' => 'application/json',
+            'Cookie' => $get_token['setCookie']
+        ];
+        
+        $inventory_list = $this->get_inventory_list($headers, $projectCode, $propertyCode);
+        if($inventory_list == null){
+             return response()->json(['Message' => 'No Inventory Found'], 200);
+        }
+        $result = null;
+        // dd($inventory_list);
+        foreach($inventory_list as $inventory){
+        // $propertyCode = Crypt::encryptString('$inventory');
+        $propertyCode = EncryptedRouteParameter::fromConfig()->encrypt($inventory);
+        // dd($propertyCode);
+        $request->name = $inventory;
+        $request->property_ids=[1105,1024,1290,1050,1029,1107,1109,1203,1204,1202,1285];
+
+        $propertyValue =$this->get_document_property($request, $objectID , $propertyID);
+        $propData = json_decode($propertyValue->getContent(), true);
+        
+        $request->name = $propData['Project Code'];
+        $request->property_ids=[1293,1294];
+        $projectValue = $this->get_document_property($request, 101 , 1050);
+        $projData = json_decode($projectValue->getContent(), true);
+
+        $body = [
+            "company_name" => !empty($projData['Project Developer']) ? $projData['Project Developer'] : "-",
+            "registry_of_deeds" => !empty($projData['Deed of Registry']) ? $projData['Deed of Registry'] : "-",
+            "tct"=> !empty($propData['TCT No.']) ? $propData['TCT No.'] : "-",
+            "vsr"=> !empty($propData['VSR']) ? $propData['VSR'] : "-",
+            "old_technical_desc"=> !empty($propData['Technical Description']) ? $propData['Technical Description'] : "-",
+            "survey_plan_no"=>!empty($propData['VSR']) ?  $propData['VSR'] : "-",
+            "block_no"=> !empty($propData['Block No.']) ? $propData['Block No.'] : "-",
+            "lot_no"=> !empty($propData['Lot']) ? $propData['Lot'] : "-",
+            "portion_of_lot"=> !empty($propData['portion_of_lot']) ? $propData['portion_of_lot'] : "-",
+            "lrc_record_no"=> !empty($propData['lrc_record_no']) ? $propData['lrc_record_no'] : "-",
+            "land_owner_claimant"=> !empty($propData['land_owner_claimant']) ? $propData['land_owner_claimant'] : "-",
+            "location"=> !empty($propData['location']) ? $propData['location'] : "-",
+            "area"=> !empty($propData['area']) ? $propData['area'] : "-",
+            "description_of_corners"=> !empty($propData['description_of_corners']) ? $propData['description_of_corners'] : "-",
+            "bearings"=> !empty($propData['bearings']) ? $propData['bearings'] : 0,
+            "original_date_of_survey"=> !empty($propData['original_date_of_survey']) ? $propData[   'original_date_of_survey'] : "-",
+            "date_of_survey"=> !empty($propData['date_of_survey']) ? $propData['date_of_survey'] : "-",
+            "date_approved"=> !empty($propData['date_approved']) ? $propData['date_approved'] : "-",
+            "geodetic_engineer"=> !empty($propData['geodetic_engineer']) ? $propData['geodetic_engineer'] : "-"
+            ];
+        // dd($body);
+        if($body['bearings']=="TRUE")
+            {
+                $body['bearings']=1;
+        }
+
+        $propUpdateRes = $this->update_properties(json_encode($body),$propertyCode);
+        $propContent = json_decode($propUpdateRes->getContent(),true);
+        // dd($propContent);
+        // if($propContent['message']){
+        //     $result[]= [$propContent['data']['property_code'] => $propContent['message']];
+            
+        // }
+        if (!empty($propContent['message'])) {
+            $result[] = [
+                $propContent['data']['property_code'] => $propContent['message']
+            ];
+        }
+        else{
+            dd( $propContent);
+        }
+        // dd([json_decode($propUpdateRes->getContent(),true)]);
+        }       
+        return $result;
+    }
+
+    public function update_properties($body,$propertyCode){
+        $client = new Client();
+        $headers = [
+            'Accept' => 'application/json',
+            'Content-Type' => 'application/json',
+            'Authorization' => 'Bearer '.config('storefront.property_api_key'),
+        ];
+        $propertyURL = config('storefront.property_url')."/api/technical-descriptions/".$propertyCode;
+        try {
+            $requestObj = new GuzzleRequest('POST', $propertyURL, $headers,$body);
+            $res = $client->sendAsync($requestObj)->wait();
+            $responseBody = $res->getBody()->getContents();
+            $res = json_decode($responseBody);
+            // return $result;
+            return response()->json($res);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Error in updating property: ' . $e->getMessage()], 404);
+        }
     }
 }

@@ -85,3 +85,7 @@ Route::get('mfiles/{buyerId}/documents',  [BuyerController::class, 'get_document
 Route::get('mfiles/{buyerId}/{documentCode}',  [BuyerController::class, 'get_document']   )
 ->middleware('auth:sanctum')
 ->name('search document');
+
+Route::get('/mfiles/sync-inventories',[MfilesController::class, 'sync_properties'] )
+->middleware('auth:sanctum')
+->name('sync-inventory');
