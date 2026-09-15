@@ -390,8 +390,8 @@ class InventoryController extends Controller
 
             // ];
             return response()->json([
-                "message"=>"Project Created Successfully",
-                "projectMfilesID" => $responseBody['DisplayID'],
+                "message"=>"Inventory Created Successfully",
+                "inventoryMfilesID" => $responseBody['DisplayID'],
                 "response" => $responseBody
             ], 200);
             // return $responseBody;
@@ -508,8 +508,8 @@ public function update_inventory(Request $request, $projectID)
             $checkoutProject = $this->checkInOutDocument($projectID, $get_token, 0);
             // return $responseBody;
              return response()->json([
-                "message"=>"Project Updated Successfully",
-                "projectMfilesID" => $responseBody['DisplayID'],
+                "message"=>"Inventory Updated Successfully",
+                "inventoryMfilesID" => $responseBody['DisplayID'],
                 "response" => $responseBody
             ], 200);
 
