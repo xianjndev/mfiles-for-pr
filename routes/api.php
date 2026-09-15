@@ -93,11 +93,11 @@ Route::get('/mfiles/sync-inventories',[MfilesController::class, 'sync_properties
 ->name('sync-inventory');
 
 // create projects
-Route::post('mfiles/create/project',  [ProjectController::class, 'create_project'])->name('create project');
-Route::post('mfiles/update/project/{projectID}',  [ProjectController::class, 'update_project']   )->name('update project');
-// Route::post('mfiles/{projectID}/files/upload/{documentCode}',  [ProjectController::class, 'upload_document']   )->name('upload project document');
-// Route::post('mfiles/{projectID}/files/update/{documentCode}',  [ProjectController::class, 'update_document']   )->name('update project document');
+Route::post('mfiles/create/project',  [ProjectController::class, 'create_project'])->middleware('auth:sanctum')->name('create project');
+Route::post('mfiles/update/project/{projectID}',  [ProjectController::class, 'update_project']   )->middleware('auth:sanctum')->name('update project');
+// Route::post('mfiles/{projectID}/files/upload/{documentCode}',  [ProjectController::class, 'upload_document']   )->middleware('auth:sanctum')->name('upload project document');
+// Route::post('mfiles/{projectID}/files/update/{documentCode}',  [ProjectController::class, 'update_document']   )->middleware('auth:sanctum')->name('update project document');
 //create inventory
 
-Route::post('mfiles/create/inventory',  [InventoryController::class, 'create_inventory'])->name('create inventory');
-Route::post('mfiles/update/inventory/{PBL}',  [InventoryController::class, 'update_inventory']   )->name('update inventory');
+Route::post('mfiles/create/inventory',  [InventoryController::class, 'create_inventory'])->middleware('auth:sanctum')->name('create inventory');
+Route::post('mfiles/update/inventory/{PBL}',  [InventoryController::class, 'update_inventory']   )->middleware('auth:sanctum')->name('update inventory');
