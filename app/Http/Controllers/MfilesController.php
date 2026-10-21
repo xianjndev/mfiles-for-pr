@@ -504,97 +504,36 @@ class MfilesController extends Controller
         }
 
     }
-    public function get_document_property(Request $request, $ObjectID = null, $propertyID = null){
-         //added only for CS lookup
-
-        //  if(config("cs.property_lookup")){
-        //     // $pbl;
-        //     try {
-
-        //         // Example API endpoint
-        //         if($request->propertyID===1050)
-        //         {
-        //             $baseURL = $this->getBaseURL($request->name);
-        //             $url = $baseURL."api_storefront_seller/get_project_detail/".$request->name;
-        //         }
-        //         if($request->propertyID===1105)
-        //         {
-        //             $pbl=explode("-",$request->name);
-        //             $baseURL = $this->getBaseURL($pbl[0]);
-
-        //             $url = $baseURL."api_storefront_seller/get_property_detail/".$request->name;
-        //         }
-        //         $client = new Client();
-        //         $response = $client->get($url);
-        //         $response_message = json_decode($response->getBody(), true);
-
-        //         return response()->json($response_message);
-        //     } catch (\Exception $e) {
-        //         return response()->json([
-        //             'status' => 'error',
-        //             'message' => 'Request error: ' . $e->getMessage()
-        //         ], 500);
-        //     }
-
-
-        // }
-        //end CS lookup
-        
-        // Comment Out below based on new update of sir gari - Aug 25, 2026
-
-        // $objectID = $objectID ?? $request->objectID;
-        // $propertyID = $propertyID ?? $request->propertyID;
-
-        // $get_token = $this->get_token($request);
-        // $objectURL =$this->baseURL()."/REST/objects/".$objectID."?p".$propertyID."=".$request->name ;
-        // $client = new Client();
-        // $headers = [
-        //     'x-authentication' => $get_token['token'],
-        //     'Content-Type' => 'application/json',
-        //     'Cookie' => $get_token['setCookie']
-        // ];
-        // // dd($headers);
-        // try{
-        //     $requestObj = new GuzzleRequest('GET', $objectURL, $headers);
-        //     $res = $client->sendAsync($requestObj)->wait();
-        //     $responseBody = $res->getBody()->getContents();
-        //     $res = json_decode($responseBody);
-        //     if(count($res->Items) == 0){
-        //         return response()->json(['error' => 'Object not found'], 404);
-        //     }
-        //     $objID = $res->Items[0]->DisplayID;
-        //     foreach ($request->property_ids as $prop_id){
-        //         $prop_def = $this->get_property_definition($headers,$prop_id);
-        //         $prop_value = $this->get_property_value($headers,$objectID."/".$objID."/latest/properties/".$prop_id);
-        //         if($prop_id == 1285){
-        //             $short_start = explode('Bounded on the', $prop_value);
-        //             $short_end = explode('point of beginning', $prop_value);
-        //             $prop_value = ($short_start[0] ." Bounded on the XXXX to the point of beginning".$short_end[1]);
-        //         }
-
-        //         $result[$prop_def['name']] = $prop_value ;
-
-        //     }
-        //     // return $result;
-        //     return response()->json($result);
-        // } catch (\Exception $e) {
-        //     return response()->json(['error' => 'Error in searching object: ' . $e->getMessage()], 404);
-        // }
-
-        // End of comment out based on new update of sir gari - Aug 25, 2026
-
+    public function get_document_property(
+        Request $request,
+        $objectID = null,
+        $propertyID = null
+    ) {
         $objectID = $objectID ?? $request->objectID;
         $propertyID = $propertyID ?? $request->propertyID;
+    
         $get_token = $this->get_token($request);
-        $objectURL =$this->baseURL()."/REST/objects/".$objectID."?p".$propertyID."=".$request->name ;
+    
+        $objectURL = $this->baseURL()
+            . "/REST/objects/"
+            . $objectID
+            . "?p"
+            . $propertyID
+            . "="
+            . $request->name;
+    
         $client = new Client();
+    
         $headers = [
             'x-authentication' => $get_token['token'],
             'Content-Type' => 'application/json',
             'Cookie' => $get_token['setCookie']
         ];
-        // dd($propertyID);
-        if($objectID==119){
+    
+        $customPropIDs = [];
+    
+        if ($objectID == 119) {
+    
             $customPropIDs = [
                 1332 => "portion_of_lot",
                 1333 => "lrc_record_no",
@@ -608,53 +547,127 @@ class MfilesController extends Controller
                 1341 => "date_approved",
                 1342 => "geodetic_engineer"
             ];
+    
             $propery_ids = array_unique(array_merge(
                 (array) $request->property_ids,
-                [1332, 1333, 1334, 1335, 1336, 1337, 1338, 1339, 1340, 1341, 1342]
+                array_keys($customPropIDs)
             ));
-        }else{
-            $propery_ids = $request->property_ids;
+    
+        } else {
+    
+            $propery_ids = (array) $request->property_ids;
         }
-        try{
-            $requestObj = new GuzzleRequest('GET', $objectURL, $headers);
-            $res = $client->sendAsync($requestObj)->wait();
-            $responseBody = $res->getBody()->getContents();
+    
+        try {
+    
+            $requestObj = new GuzzleRequest(
+                'GET',
+                $objectURL,
+                $headers
+            );
+    
+            $res = $client
+                ->sendAsync($requestObj)
+                ->wait();
+    
+            $responseBody = $res
+                ->getBody()
+                ->getContents();
+    
             $res = json_decode($responseBody);
-            if(count($res->Items) == 0){
-                return response()->json(['error' => 'Object not found'], 404);
+    
+            /*
+             * Validate response
+             */
+            if (
+                !$res ||
+                !isset($res->Items) ||
+                count($res->Items) === 0
+            ) {
+                return [
+                    '_error' => 'Object not found'
+                ];
             }
+    
             $objID = $res->Items[0]->DisplayID;
-            // dd($propery_ids);
-            foreach ($propery_ids as $prop_id){ 
+    
+            $result = [];
+    
+            foreach ($propery_ids as $prop_id) {
+    
                 if (isset($customPropIDs[$prop_id])) {
+    
                     $prop_name = $customPropIDs[$prop_id];
-                } 
-                else {
-                $prop_def = $this->get_property_definition($headers, $prop_id);
-                $prop_name = $prop_def['name'] ?? 'property_' . $prop_id;
-                 }
-                // $prop_def = $this->get_property_definition($headers,$prop_id);
-                $prop_value = $this->get_property_value($headers,$objectID."/".$objID."/latest/properties/".$prop_id);
-                if($prop_id == 1285){
-                    if($prop_value){
-                        $short_start = explode('Bounded on the', $prop_value);
-                        $short_end = explode('point of beginning', $prop_value);
-                        $prop_value = ($short_start[0] ." Bounded on the XXXX to the point of beginning".$short_end[1]);
-                        $result['old_technical_desc'] = $prop_value ;
+    
+                } else {
+    
+                    $prop_def = $this->get_property_definition(
+                        $headers,
+                        $prop_id
+                    );
+    
+                    $prop_name =
+                        $prop_def['name']
+                        ?? 'property_' . $prop_id;
+                }
+    
+                $prop_value = $this->get_property_value(
+                    $headers,
+                    $objectID
+                    . "/"
+                    . $objID
+                    . "/latest/properties/"
+                    . $prop_id
+                );
+               
+    
+                /*
+                 * Technical Description
+                 */
+                if ($prop_id == 1285 && $prop_value) {
+    
+                    $short_start =
+                        explode(
+                            'Bounded on the',
+                            $prop_value
+                        );
+    
+                    $short_end =
+                        explode(
+                            'point of beginning',
+                            $prop_value
+                        );
+    
+                    if (
+                        isset($short_start[0]) &&
+                        isset($short_end[1])
+                    ) {
+    
+                        $prop_value =
+                            $short_start[0]
+                            . " Bounded on the XXXX to the point of beginning"
+                            . $short_end[1];
+    
+                        $result['old_technical_desc'] =
+                            $prop_value;
                     }
-
-               }
-                // $result[$prop_def['name']] = $prop_value ;
+                }
+    
                 $result[$prop_name] = $prop_value;
             }
-
-            // return $result;
-             return response()->json($result);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Error in searching object: ' . $e->getMessage()], 404);
+    
+            return $result;
+    
+        } catch (\Throwable $e) {
+    
+            return [
+                '_error' =>
+                    'Error in searching object: '
+                    . $e->getMessage()
+            ];
         }
-
     }
+
     public function get_document_property_multi(Request $request, $ObjectID = null, $propertyID = null){
 
         //added only for CS lookup
@@ -1111,7 +1124,7 @@ class MfilesController extends Controller
         $client = new Client();
 
         try {
-            $objPropertyURL = $this->baseURL() . "/REST/objects/" . $objectID . "?limit=5";
+            $objPropertyURL = $this->baseURL() . "/REST/objects/" . $objectID . "?limit=99999";
             if($project){
                 $objPropertyURL = $objPropertyURL."&p1050=".$project ;
             }
@@ -1142,104 +1155,366 @@ class MfilesController extends Controller
 
     public function sync_properties(Request $request)
     {
-        $objectID = 119;// $objectID ?? $request->objectID;
-        $propertyID = 1105;// $propertyID ?? $request->propertyID;
+        set_time_limit(0);
+        ini_set('max_execution_time', '0');
+
+        $objectID = 119;
+        $propertyID = 1105;
         $projectCode = $request->projectCode ?? null;
         $propertyCode = $request->propertyCode ?? null;
-        // dd($projectCode);
+
         $get_token = $this->get_token($request);
-      
+
         $headers = [
             'x-authentication' => $get_token['token'],
             'Content-Type' => 'application/json',
             'Cookie' => $get_token['setCookie']
         ];
+
+        $inventory_list = $this->get_inventory_list(
+            $headers,
+            $projectCode,
+            $propertyCode
+        );
         
-        $inventory_list = $this->get_inventory_list($headers, $projectCode, $propertyCode);
-        if($inventory_list == null){
-             return response()->json(['Message' => 'No Inventory Found'], 200);
+        if (empty($inventory_list)) {
+            return response()->json([
+                'message' => 'No Inventory Found',
+                'success' => 0,
+                'failed' => 0,
+            ], 200);
         }
-        $result = null;
-        // dd($inventory_list);
-        foreach($inventory_list as $inventory){
-        // $propertyCode = Crypt::encryptString('$inventory');
-        $propertyCode = EncryptedRouteParameter::fromConfig()->encrypt($inventory);
-        // dd($propertyCode);
-        $request->name = $inventory;
-        $request->property_ids=[1105,1024,1290,1050,1029,1107,1109,1203,1204,1202,1285];
+        // dd($inventory_list[76]);
+        $result = [
+            'success' => 0,
+            'failed' => 0,
+        ];
+        foreach ($inventory_list as $index => $inventory) {
 
-        $propertyValue =$this->get_document_property($request, $objectID , $propertyID);
-        $propData = json_decode($propertyValue->getContent(), true);
-        
-        $request->name = $propData['Project Code'];
-        $request->property_ids=[1293,1294];
-        $projectValue = $this->get_document_property($request, 101 , 1050);
-        $projData = json_decode($projectValue->getContent(), true);
+            $propertyCode = EncryptedRouteParameter::fromConfig()
+                ->encrypt($inventory);
 
-        $body = [
-            "company_name" => !empty($projData['Project Developer']) ? $projData['Project Developer'] : "-",
-            "registry_of_deeds" => !empty($projData['Deed of Registry']) ? $projData['Deed of Registry'] : "-",
-            "tct"=> !empty($propData['TCT No.']) ? $propData['TCT No.'] : "-",
-            "vsr"=> !empty($propData['VSR']) ? $propData['VSR'] : "-",
-            "old_technical_desc"=> !empty($propData['Technical Description']) ? $propData['Technical Description'] : "-",
-            "survey_plan_no"=>!empty($propData['VSR']) ?  $propData['VSR'] : "-",
-            "block_no"=> !empty($propData['Block No.']) ? $propData['Block No.'] : "-",
-            "lot_no"=> !empty($propData['Lot']) ? $propData['Lot'] : "-",
-            "portion_of_lot"=> !empty($propData['portion_of_lot']) ? $propData['portion_of_lot'] : "-",
-            "lrc_record_no"=> !empty($propData['lrc_record_no']) ? $propData['lrc_record_no'] : "-",
-            "land_owner_claimant"=> !empty($propData['land_owner_claimant']) ? $propData['land_owner_claimant'] : "-",
-            "location"=> !empty($propData['location']) ? $propData['location'] : "-",
-            "area"=> !empty($propData['area']) ? $propData['area'] : "-",
-            "description_of_corners"=> !empty($propData['description_of_corners']) ? $propData['description_of_corners'] : "-",
-            "bearings"=> !empty($propData['bearings']) ? $propData['bearings'] : 0,
-            "original_date_of_survey"=> !empty($propData['original_date_of_survey']) ? $propData[   'original_date_of_survey'] : "-",
-            "date_of_survey"=> !empty($propData['date_of_survey']) ? $propData['date_of_survey'] : "-",
-            "date_approved"=> !empty($propData['date_approved']) ? $propData['date_approved'] : "-",
-            "geodetic_engineer"=> !empty($propData['geodetic_engineer']) ? $propData['geodetic_engineer'] : "-"
+            $request->name = $inventory;
+            $request->property_ids = [
+                1105, 1024, 1290, 1050, 1029,
+                1107, 1109, 1203, 1204, 1202, 1285
             ];
-        // dd($body);
-        if($body['bearings']=="TRUE")
-            {
-                $body['bearings']=1;
+
+            $propertyValue = $this->get_document_property(
+                $request,
+                $objectID,
+                $propertyID
+            );
+
+            $propData = $propertyValue;
+
+            // $request->name = $propData['Project Code'] ?? null;
+            $request->name = $projectCode;
+            $request->property_ids = [1293, 1294];
+
+            $projectValue = $this->get_document_property(
+                $request,
+                101,
+                1050
+            );
+            $projData = $projectValue;
+            // dd($projData['Project Developer']);
+            $body = [
+                "company_name" => !empty($projData['Project Developer'])
+                    ? $projData['Project Developer'] : "-",
+
+                "registry_of_deeds" => !empty($projData['Deed of Registry'])
+                    ? $projData['Deed of Registry'] : "-",
+
+                "tct" => !empty($propData['TCT No.'])
+                    ? $propData['TCT No.'] : "-",
+
+                "vsr" => !empty($propData['VSR'])
+                    ? $propData['VSR'] : "-",
+
+                "old_technical_desc" => !empty($propData['Technical Description'])
+                    ? $propData['Technical Description'] : "-",
+
+                "survey_plan_no" => !empty($propData['VSR'])
+                    ? $propData['VSR'] : "-",
+
+                "block_no" => !empty($propData['Block No.'])
+                    ? $propData['Block No.'] : "-",
+
+                "lot_no" => !empty($propData['Lot'])
+                    ? $propData['Lot'] : "-",
+
+                "portion_of_lot" => !empty($propData['portion_of_lot'])
+                    ? $propData['portion_of_lot'] : "-",
+
+                "lrc_record_no" => !empty($propData['lrc_record_no'])
+                    ? $propData['lrc_record_no'] : "-",
+
+                "land_owner_claimant" => !empty($propData['land_owner_claimant'])
+                    ? $propData['land_owner_claimant'] : "-",
+
+                "location" => !empty($propData['location'])
+                    ? $propData['location'] : "-",
+
+                "area" => !empty($propData['area'])
+                    ? $propData['area'] : "-",
+
+                "description_of_corners" => !empty($propData['description_of_corners'])
+                    ? $propData['description_of_corners'] : "-",
+
+                "bearings" => !empty($propData['bearings'])
+                    ? $propData['bearings'] : "-",
+
+                "original_date_of_survey" => !empty($propData['original_date_of_survey'])
+                    ? $propData['original_date_of_survey'] : "-",
+
+                "date_of_survey" => !empty($propData['date_of_survey'])
+                    ? $propData['date_of_survey'] : "-",
+
+                "date_approved" => !empty($propData['date_approved'])
+                    ? $propData['date_approved'] : "-",
+
+                "geodetic_engineer" => !empty($propData['geodetic_engineer'])
+                    ? $propData['geodetic_engineer'] : "-"
+            ];
+
+            // Convert bearings
+            // if ($body['bearings'] === "TRUE") {
+            //     $body['bearings'] = 1;
+            // } elseif ($body['bearings'] === "") {
+            //     $body['bearings'] = 0;
+            // }
+
+            $propUpdateRes = $this->update_properties(
+                json_encode($body),
+                $propertyCode
+            );
+
+            $propContent = $propUpdateRes;
+            // Safely get message
+            $message = $propContent['data']['message'] ?? null;
+            // dd($message);
+
+            if ($message === "Technical description updated successfully.") {
+                $result['success']++;
+            } else {
+                $result['failed']++;
+                $result['failed reason'] = $inventory. ":" . $message;
+            }
         }
 
-        $propUpdateRes = $this->update_properties(json_encode($body),$propertyCode);
-        $propContent = json_decode($propUpdateRes->getContent(),true);
-        // dd($propContent);
-        // if($propContent['message']){
-        //     $result[]= [$propContent['data']['property_code'] => $propContent['message']];
-            
-        // }
-        if (!empty($propContent['message'])) {
-            $result[] = [
-                $propContent['data']['property_code'] => $propContent['message']
-            ];
-        }
-        else{
-            dd( $propContent);
-        }
-        // dd([json_decode($propUpdateRes->getContent(),true)]);
-        }       
-        return $result;
+        return response()->json([
+            'message' => 'Property sync completed.',
+            'success' => $result['success'],
+            'failed' => $result['failed'],
+            'total' => $result['success'] + $result['failed'],
+        ], 200);
     }
 
-    public function update_properties($body,$propertyCode){
-        $client = new Client();
+    public function update_properties($body, $propertyCode)
+    {
+        $client = new Client([
+            'timeout' => 60,
+            'connect_timeout' => 15,
+            'http_errors' => false,
+        ]);
+
         $headers = [
             'Accept' => 'application/json',
             'Content-Type' => 'application/json',
-            'Authorization' => 'Bearer '.config('storefront.property_api_key'),
+            'Authorization' => 'Bearer ' . config('storefront.property_api_key'),
         ];
-        $propertyURL = config('storefront.property_url')."/api/technical-descriptions/".$propertyCode;
-        try {
-            $requestObj = new GuzzleRequest('POST', $propertyURL, $headers,$body);
-            $res = $client->sendAsync($requestObj)->wait();
-            $responseBody = $res->getBody()->getContents();
-            $res = json_decode($responseBody);
-            // return $result;
-            return response()->json($res);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Error in updating property: ' . $e->getMessage()], 404);
+
+        $propertyURL = rtrim(
+            config('storefront.property_url'),
+            '/'
+        ) . '/api/technical-descriptions/' . $propertyCode;
+        $maxRetries = 3;
+        $retryCount = 0;
+
+        while (true) {
+
+            try {
+                $response = $client->post($propertyURL, [
+                    'headers' => $headers,
+                    'body' => $body,
+                ]);
+
+                $statusCode = $response->getStatusCode();
+
+                $responseBody = $response
+                    ->getBody()
+                    ->getContents();
+
+                $responseData = json_decode(
+                    $responseBody,
+                    true
+                );
+                if (
+                    $statusCode >= 200 &&
+                    $statusCode < 300
+                ) {
+                    return [
+                        'status' => $statusCode,
+                        'data' => $responseData,
+                        'retry_count' => $retryCount,
+                    ];
+                }
+
+                if ($statusCode === 429) {
+
+                    if ($retryCount >= $maxRetries) {
+
+                        return [
+                            'status' => 429,
+                            'data' => $responseData,
+                            'error' =>
+                                $responseData['message']
+                                ?? 'Maximum retry attempts reached due to rate limiting.',
+                            'retry_count' => $retryCount,
+                        ];
+                    }
+
+                    $retryCount++;
+                    $retryAfter = trim(
+                        $response->getHeaderLine('Retry-After')
+                    );
+
+                    if (
+                        $retryAfter !== '' &&
+                        is_numeric($retryAfter)
+                    ) {
+
+                        $sleepSeconds = max(
+                            1,
+                            (int) $retryAfter
+                        );
+
+                    } else {
+
+                        $sleepSeconds = min(
+                            2 ** $retryCount,
+                            60
+                        );
+                    }
+
+                    \Log::warning(
+                        'Properties API rate limited.',
+                        [
+                            'property_code' => $propertyCode,
+                            'retry' => $retryCount,
+                            'max_retries' => $maxRetries,
+                            'sleep_seconds' => $sleepSeconds,
+                        ]
+                    );
+
+                    sleep($sleepSeconds);
+
+                    continue;
+                }
+
+                return [
+                    'status' => $statusCode,
+                    'data' => $responseData,
+                    'error' =>
+                        $responseData['message']
+                        ?? 'Property update failed.',
+                    'retry_count' => $retryCount,
+                ];
+
+            } catch (RequestException $e) {
+
+                $statusCode = null;
+                $responseData = null;
+
+                if ($e->hasResponse()) {
+
+                    $errorResponse = $e->getResponse();
+
+                    $statusCode =
+                        $errorResponse->getStatusCode();
+
+                    $responseBody =
+                        $errorResponse
+                            ->getBody()
+                            ->getContents();
+
+                    $responseData = json_decode(
+                        $responseBody,
+                        true
+                    );
+
+                    if ($statusCode === 429) {
+
+                        if ($retryCount >= $maxRetries) {
+
+                            return [
+                                'status' => 429,
+                                'data' => $responseData,
+                                'error' =>
+                                    $responseData['message']
+                                    ?? 'Maximum retry attempts reached due to rate limiting.',
+                                'retry_count' => $retryCount,
+                            ];
+                        }
+
+                        $retryCount++;
+
+                        $retryAfter = trim(
+                            $errorResponse
+                                ->getHeaderLine('Retry-After')
+                        );
+
+                        if (
+                            $retryAfter !== '' &&
+                            is_numeric($retryAfter)
+                        ) {
+
+                            $sleepSeconds = max(
+                                1,
+                                (int) $retryAfter
+                            );
+
+                        } else {
+
+                            $sleepSeconds = min(
+                                2 ** $retryCount,
+                                60
+                            );
+                        }
+
+                        \Log::warning(
+                            'Properties API rate limited.',
+                            [
+                                'property_code' => $propertyCode,
+                                'retry' => $retryCount,
+                                'max_retries' => $maxRetries,
+                                'sleep_seconds' => $sleepSeconds,
+                            ]
+                        );
+
+                        sleep($sleepSeconds);
+
+                        continue;
+                    }
+                }
+
+                return [
+                    'status' => $statusCode ?? 500,
+                    'data' => $responseData,
+                    'error' => $e->getMessage(),
+                    'retry_count' => $retryCount,
+                ];
+
+            } catch (\Throwable $e) {
+
+                return [
+                    'status' => 500,
+                    'data' => null,
+                    'error' => $e->getMessage(),
+                    'retry_count' => $retryCount,
+                ];
+            }
         }
     }
 }

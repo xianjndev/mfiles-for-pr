@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Helpers\MfilesApiLogHelper;
 use Illuminate\Http\Request;
 use GuzzleHttp\Client;
 use GuzzleHttp\Psr7\Request as GuzzleRequest;
@@ -128,11 +129,11 @@ class ProjectController extends Controller
     {
         $authURL = $this->baseURL() . '/REST/server/authenticationtokens';
         $username = !$request->Credentials ? config("mfiles.mfiles_credentials.username") : $request->Credentials['Username'];
-        $password = !$request->Credentials ? env("MFILES_ADMIN_PASS") : $request->Credentials['Password'];
+        $password = !$request->Credentials ? config("mfiles.mfiles_credentials.password") : $request->Credentials['Password'];
         $credential = [
             'Username' => $username,
             'Password' => $password,
-            'VaultGuid' => env('MFILES_VAULTID', "DF00F177-C725-4EB7-AC98-A557D1245361") // $request->input('vaultid') -- change to Param if multiple vault
+            'VaultGuid' => config("mfiles.mfiles_vaultid") // $request->input('vaultid') -- change to Param if multiple vault
         ];
 
         $client = new Client();
@@ -211,10 +212,22 @@ class ProjectController extends Controller
     }
     public function create_project(Request $request)
     {
+        $startTime = microtime(true);
         $get_token = $this->get_token($request);
         $developers = $this->get_value_list($request, 156);
         $checkProjectCode = $this->checkProjectCode($get_token, $request->project_code);
         if ($checkProjectCode) {
+            $durationMs = round( (microtime(true) - $startTime) * 1000 );
+            MfilesApiLogHelper::log( 
+                apiCalled: config('app.url').'/api/mfiles/create/project',
+                httpMethod: 'POST',
+                requestBody: $request->input(), 
+                response: [
+                    'message' => "Project Code already existing",
+                ], 
+                statusCode: 200, 
+                durationMs: $durationMs 
+            );
             return response()->json([
                 'message' => "Project Code already existing",
             ], 200);
@@ -298,6 +311,20 @@ class ProjectController extends Controller
             //     "projectMfilesID" => $responseBody->DisplayID
 
             // ];
+
+            $durationMs = round( (microtime(true) - $startTime) * 1000 );
+            MfilesApiLogHelper::log( 
+                apiCalled: config('app.url').'/api/mfiles/create/project',
+                httpMethod: 'POST',
+                requestBody: $request->input(), 
+                response: [
+                    "message"=>"Project Created Successfully",
+                    "projectMfilesID" => $responseBody['DisplayID'],
+                    "response" => $responseBody
+                ], 
+                statusCode: 200, 
+                durationMs: $durationMs 
+            );
             return response()->json([
                 "message"=>"Project Created Successfully",
                 "projectMfilesID" => $responseBody['DisplayID'],
@@ -313,6 +340,20 @@ class ProjectController extends Controller
                 ? $response->getBody()->getContents()
                 : null;
 
+            $durationMs = round( (microtime(true) - $startTime) * 1000 );
+            MfilesApiLogHelper::log( 
+                apiCalled: config('app.url').'/api/mfiles/create/project',
+                httpMethod: 'POST',
+                requestBody: $request->input(), 
+                response: [
+                    'status' => $response?->getStatusCode(),
+                    'error' => json_decode($errorBody, true),
+                    'raw_error' => $errorBody,
+                ], 
+                statusCode: $response?->getStatusCode() ?? 500, 
+                durationMs: $durationMs 
+            );
+
             return response()->json([
                 'status' => $response?->getStatusCode(),
                 'error' => json_decode($errorBody, true),
@@ -320,8 +361,10 @@ class ProjectController extends Controller
             ], $response?->getStatusCode() ?? 500);
         }
     }
-public function update_project(Request $request, $projectID)
+
+    public function update_project(Request $request, $projectID)
     {
+        $startTime = microtime(true);
         $get_token = $this->get_token($request);
         $developers = $this->get_value_list($request, 156);
         // $checkProjectCode = $this->checkProjectCode($get_token, $request->project_code);
@@ -414,6 +457,20 @@ public function update_project(Request $request, $projectID)
             );
             $checkoutProject = $this->checkInOutDocument($projectID, $get_token, 0);
             // return $responseBody;
+
+            $durationMs = round( (microtime(true) - $startTime) * 1000 );
+            MfilesApiLogHelper::log( 
+                apiCalled: config('app.url').'/api/mfiles/update/project/'.$projectID,
+                httpMethod: 'POST',
+                requestBody: $request->input(), 
+                response: [
+                    "message"=>"Project Updated Successfully",
+                    "projectMfilesID" => $responseBody['DisplayID'],
+                    "response" => $responseBody
+                ], 
+                statusCode: 200, 
+                durationMs: $durationMs 
+            );
              return response()->json([
                 "message"=>"Project Updated Successfully",
                 "projectMfilesID" => $responseBody['DisplayID'],
@@ -428,6 +485,19 @@ public function update_project(Request $request, $projectID)
                 ? $response->getBody()->getContents()
                 : null;
 
+            $durationMs = round( (microtime(true) - $startTime) * 1000 );
+            MfilesApiLogHelper::log( 
+                apiCalled: config('app.url').'/api/mfiles/update/project/'.$projectID,
+                httpMethod: 'POST',
+                requestBody: $request->input(), 
+                response: [
+                    'status' => $response?->getStatusCode(),
+                    'error' => json_decode($errorBody, true),
+                    'raw_error' => $errorBody,
+                ], 
+                statusCode: $response?->getStatusCode() ?? 500, 
+                durationMs: $durationMs 
+            );
             return response()->json([
                 'status' => $response?->getStatusCode(),
                 'error' => json_decode($errorBody, true),
@@ -672,7 +742,7 @@ public function update_project(Request $request, $projectID)
             'x-authentication' => $get_token['token'],
             'Cookie' => $get_token['setCookie'],
         ];
-        $objectId = env("MFILES_STOREFRONT_OBJECT_ID", 723368);
+        $objectId = config("mfiles.mfile_sf_obj_id");
 
         $uploadFile = $request->file('uploadFile');
         $fileName = $uploadFile->getClientOriginalName();
@@ -713,7 +783,7 @@ public function update_project(Request $request, $projectID)
     public function view_storefront_document(Request $request, $fileId)
     {
         $get_token = $this->get_token($request);
-        $objectId = env("MFILES_STOREFRONT_OBJECT_ID", 723368);
+        $objectId = config("mfiles.mfile_sf_obj_id");
         $client = new Client();
         $headers = [
             'x-authentication' => $get_token['token'],

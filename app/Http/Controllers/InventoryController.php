@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Helpers\MfilesApiLogHelper;
 use Illuminate\Http\Request;
 use GuzzleHttp\Client;
 use GuzzleHttp\Psr7\Request as GuzzleRequest;
@@ -278,16 +279,28 @@ class InventoryController extends Controller
     }
     public function create_inventory(Request $request)
     {
+        $startTime = microtime(true);
         $get_token = $this->get_token($request);
         $developers = $this->get_value_list($request, 156);
         $checkInventory = $this->checkInventory($get_token, $request->property_code);
         // dd($checkInventory);
         if($checkInventory['status'])
-            {
-              return response()->json([
+        {
+            $durationMs = round( (microtime(true) - $startTime) * 1000 );
+            MfilesApiLogHelper::log( 
+                apiCalled: config('app.url').'/api/mfiles/create/inventory',
+                httpMethod: 'POST',
+                requestBody: $request->input(), 
+                response: [
+                    'message' => "Property already existing",
+                ], 
+                statusCode: 200, 
+                durationMs: $durationMs 
+            );
+            return response()->json([
                 'message' => "Property already existing",
             ], 200); 
-            }
+        }
         $checkProjectCode = $this->checkProjectCode($get_token, $request->project_code);
         
         $projectID = $checkProjectCode['projectID']??null;
@@ -389,6 +402,20 @@ class InventoryController extends Controller
             //     "projectMfilesID" => $responseBody->DisplayID
 
             // ];
+
+            $durationMs = round( (microtime(true) - $startTime) * 1000 );
+            MfilesApiLogHelper::log( 
+                apiCalled: config('app.url').'/api/mfiles/create/inventory',
+                httpMethod: 'POST',
+                requestBody: $request->input(), 
+                response: [
+                    "message"=>"Inventory Created Successfully",
+                    "inventoryMfilesID" => $responseBody['DisplayID'],
+                    "response" => $responseBody
+                ], 
+                statusCode: 200, 
+                durationMs: $durationMs 
+            );
             return response()->json([
                 "message"=>"Inventory Created Successfully",
                 "inventoryMfilesID" => $responseBody['DisplayID'],
@@ -403,7 +430,19 @@ class InventoryController extends Controller
             $errorBody = $response
                 ? $response->getBody()->getContents()
                 : null;
-
+            $durationMs = round( (microtime(true) - $startTime) * 1000 );
+            MfilesApiLogHelper::log( 
+                apiCalled: config('app.url').'/api/mfiles/create/inventory',
+                httpMethod: 'POST',
+                requestBody: $request->input(), 
+                response: [
+                    'status' => $response?->getStatusCode(),
+                    'error' => json_decode($errorBody, true),
+                    'raw_error' => $errorBody,
+                ], 
+                statusCode: $response?->getStatusCode() ?? 500, 
+                durationMs: $durationMs 
+            );
             return response()->json([
                 'status' => $response?->getStatusCode(),
                 'error' => json_decode($errorBody, true),
@@ -411,8 +450,9 @@ class InventoryController extends Controller
             ], $response?->getStatusCode() ?? 500);
         }
     }
-public function update_inventory(Request $request, $projectID)
+    public function update_inventory(Request $request, $projectID)
     {
+        $startTime = microtime(true);
         $get_token = $this->get_token($request);
         $developers = $this->get_value_list($request, 156);
         
@@ -507,7 +547,20 @@ public function update_inventory(Request $request, $projectID)
             );
             $checkoutProject = $this->checkInOutDocument($projectID, $get_token, 0);
             // return $responseBody;
-             return response()->json([
+            $durationMs = round( (microtime(true) - $startTime) * 1000 );
+            MfilesApiLogHelper::log( 
+                apiCalled: config('app.url').'/api/mfiles/update/inventory/'.$projectID,
+                httpMethod: 'POST',
+                requestBody: $request->input(), 
+                response: [
+                    "message"=>"Inventory Updated Successfully",
+                    "inventoryMfilesID" => $responseBody['DisplayID'],
+                    "response" => $responseBody
+                ], 
+                statusCode: 200, 
+                durationMs: $durationMs 
+            );
+            return response()->json([
                 "message"=>"Inventory Updated Successfully",
                 "inventoryMfilesID" => $responseBody['DisplayID'],
                 "response" => $responseBody
@@ -521,6 +574,19 @@ public function update_inventory(Request $request, $projectID)
                 ? $response->getBody()->getContents()
                 : null;
 
+            $durationMs = round( (microtime(true) - $startTime) * 1000 );
+            MfilesApiLogHelper::log( 
+                apiCalled: config('app.url').'/api/mfiles/update/inventory/'.$projectID,
+                httpMethod: 'POST',
+                requestBody: $request->input(), 
+                response: [
+                    'status' => $response?->getStatusCode(),
+                    'error' => json_decode($errorBody, true),
+                    'raw_error' => $errorBody,
+                ], 
+                statusCode: $response?->getStatusCode() ?? 500, 
+                durationMs: $durationMs 
+                );
             return response()->json([
                 'status' => $response?->getStatusCode(),
                 'error' => json_decode($errorBody, true),
