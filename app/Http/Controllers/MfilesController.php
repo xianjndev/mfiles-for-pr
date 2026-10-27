@@ -11,6 +11,7 @@ use GuzzleHttp\Psr7\MultipartStream;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Crypt;
 use App\Support\EncryptedRouteParameter;
+use Illuminate\Support\Str;
 
 class MfilesController extends Controller
 {
@@ -1122,6 +1123,7 @@ class MfilesController extends Controller
         $objectID = 119;// $objectID ?? $request->objectID;
         $propertyID = 1105;// $propertyID ?? $request->propertyID;
         $client = new Client();
+        $inventory_list = [];
 
         try {
             $objPropertyURL = $this->baseURL() . "/REST/objects/" . $objectID . "?limit=99999";
@@ -1135,9 +1137,9 @@ class MfilesController extends Controller
             $requestProp = new GuzzleRequest('GET', $objPropertyURL, $headers);
             $resProp = $client->sendAsync($requestProp)->wait();
             $responseBodyProp = json_decode($resProp->getBody()->getContents());
-            $arr_inventory = $responseBodyProp->Items;
-            if($arr_inventory==null){
-             return null;
+            $arr_inventory = $responseBodyProp->Items ?? [];
+            if (empty($arr_inventory)) {
+                return [];
             }
             foreach ($arr_inventory as $inv_item) {
                 // $inventory_list[]=
@@ -1148,8 +1150,15 @@ class MfilesController extends Controller
             );
             // dd($inventory_list);
             return $inventory_list;
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Error in getting property value: ' . $e->getMessage()], 500);
+        } catch (\Throwable $exception) {
+            \Log::error('Unable to retrieve the M-Files inventory list.', [
+                'project_code' => $project,
+                'property_code' => $propertyCode,
+                'exception_class' => $exception::class,
+                'message' => $exception->getMessage(),
+            ]);
+
+            throw $exception;
         }
     }
 
@@ -1162,6 +1171,27 @@ class MfilesController extends Controller
         $propertyID = 1105;
         $projectCode = $request->projectCode ?? null;
         $propertyCode = $request->propertyCode ?? null;
+        $syncRequestId = $request->header('X-Sync-Request-ID');
+
+        if (! is_string($syncRequestId) || ! Str::isUuid($syncRequestId)) {
+            return response()->json([
+                'message' => 'A valid X-Sync-Request-ID header is required.',
+                'success' => 0,
+                'failed' => 0,
+                'total' => 0,
+                'items' => [],
+            ], 422);
+        }
+
+        if (filled($projectCode) === filled($propertyCode)) {
+            return response()->json([
+                'message' => 'Provide either projectCode or propertyCode, but not both.',
+                'success' => 0,
+                'failed' => 0,
+                'total' => 0,
+                'items' => [],
+            ], 422);
+        }
 
         $get_token = $this->get_token($request);
 
@@ -1176,142 +1206,208 @@ class MfilesController extends Controller
             $projectCode,
             $propertyCode
         );
-        
+
         if (empty($inventory_list)) {
             return response()->json([
-                'message' => 'No Inventory Found',
+                'message' => 'No inventories matched the supplied filter.',
                 'success' => 0,
                 'failed' => 0,
+                'total' => 0,
+                'items' => [],
             ], 200);
         }
+
+        // Limit to the first 10 items for testing
+        // $inventory_list = array_slice($inventory_list, 0, 10);
         // dd($inventory_list[76]);
         $result = [
             'success' => 0,
             'failed' => 0,
+            'items' => [],
         ];
+        $stoppedByProperties = false;
+
+        if ($this->report_sync_progress(
+            $syncRequestId,
+            $inventory_list[0],
+            'pending',
+            null,
+            count($inventory_list),
+            true,
+        ) !== true) {
+            return response()->json([
+                'message' => 'Property sync was not started because Properties rejected or could not validate the sync request.',
+                'status' => 'stopped',
+                'success' => 0,
+                'failed' => 0,
+                'total' => 0,
+                'items' => [],
+            ], 409);
+        }
+
         foreach ($inventory_list as $index => $inventory) {
+            if ($this->report_sync_progress($syncRequestId, $inventory, 'processing', null, count($inventory_list)) === false) {
+                $stoppedByProperties = true;
+                break;
+            }
 
-            $propertyCode = EncryptedRouteParameter::fromConfig()
-                ->encrypt($inventory);
+            try {
 
-            $request->name = $inventory;
-            $request->property_ids = [
-                1105, 1024, 1290, 1050, 1029,
-                1107, 1109, 1203, 1204, 1202, 1285
-            ];
+                $encryptedPropertyCode = EncryptedRouteParameter::fromConfig()
+                    ->encrypt($inventory);
 
-            $propertyValue = $this->get_document_property(
-                $request,
-                $objectID,
-                $propertyID
-            );
+                $request->name = $inventory;
+                $request->property_ids = [
+                    1105, 1024, 1290, 1050, 1029,
+                    1107, 1109, 1203, 1204, 1202, 1285
+                ];
 
-            $propData = $propertyValue;
+                $propertyValue = $this->get_document_property(
+                    $request,
+                    $objectID,
+                    $propertyID
+                );
 
-            // $request->name = $propData['Project Code'] ?? null;
-            $request->name = $projectCode;
-            $request->property_ids = [1293, 1294];
+                $propData = $propertyValue;
 
-            $projectValue = $this->get_document_property(
-                $request,
-                101,
-                1050
-            );
-            $projData = $projectValue;
-            // dd($projData['Project Developer']);
-            $body = [
-                "company_name" => !empty($projData['Project Developer'])
-                    ? $projData['Project Developer'] : "-",
+                $resolvedProjectCode = $projectCode
+                    ?: ($propData['Project Code'] ?? null);
 
-                "registry_of_deeds" => !empty($projData['Deed of Registry'])
-                    ? $projData['Deed of Registry'] : "-",
+                if (empty($resolvedProjectCode)) {
+                    throw new \RuntimeException(
+                        "Unable to resolve the project code for property {$inventory}."
+                    );
+                }
 
-                "tct" => !empty($propData['TCT No.'])
-                    ? $propData['TCT No.'] : "-",
+                $request->name = $resolvedProjectCode;
+                $request->property_ids = [1293, 1294];
 
-                "vsr" => !empty($propData['VSR'])
-                    ? $propData['VSR'] : "-",
+                $projectValue = $this->get_document_property(
+                    $request,
+                    101,
+                    1050
+                );
+                $projData = $projectValue;
+                // dd($projData['Project Developer']);
+                $body = [
+                    "company_name" => !empty($projData['Project Developer'])
+                        ? $projData['Project Developer'] : "-",
 
-                "old_technical_desc" => !empty($propData['Technical Description'])
-                    ? $propData['Technical Description'] : "-",
+                    "registry_of_deeds" => !empty($projData['Deed of Registry'])
+                        ? $projData['Deed of Registry'] : "-",
 
-                "survey_plan_no" => !empty($propData['VSR'])
-                    ? $propData['VSR'] : "-",
+                    "tct" => !empty($propData['TCT No.'])
+                        ? $propData['TCT No.'] : "-",
 
-                "block_no" => !empty($propData['Block No.'])
-                    ? $propData['Block No.'] : "-",
+                    "vsr" => !empty($propData['VSR'])
+                        ? $propData['VSR'] : "-",
 
-                "lot_no" => !empty($propData['Lot'])
-                    ? $propData['Lot'] : "-",
+                    "old_technical_desc" => !empty($propData['Technical Description'])
+                        ? $propData['Technical Description'] : "-",
 
-                "portion_of_lot" => !empty($propData['portion_of_lot'])
-                    ? $propData['portion_of_lot'] : "-",
+                    "survey_plan_no" => !empty($propData['VSR'])
+                        ? $propData['VSR'] : "-",
 
-                "lrc_record_no" => !empty($propData['lrc_record_no'])
-                    ? $propData['lrc_record_no'] : "-",
+                    "block_no" => !empty($propData['Block No.'])
+                        ? $propData['Block No.'] : "-",
 
-                "land_owner_claimant" => !empty($propData['land_owner_claimant'])
-                    ? $propData['land_owner_claimant'] : "-",
+                    "lot_no" => !empty($propData['Lot'])
+                        ? $propData['Lot'] : "-",
 
-                "location" => !empty($propData['location'])
-                    ? $propData['location'] : "-",
+                    "portion_of_lot" => !empty($propData['portion_of_lot'])
+                        ? $propData['portion_of_lot'] : "-",
 
-                "area" => !empty($propData['area'])
-                    ? $propData['area'] : "-",
+                    "lrc_record_no" => !empty($propData['lrc_record_no'])
+                        ? $propData['lrc_record_no'] : "-",
 
-                "description_of_corners" => !empty($propData['description_of_corners'])
-                    ? $propData['description_of_corners'] : "-",
+                    "land_owner_claimant" => !empty($propData['land_owner_claimant'])
+                        ? $propData['land_owner_claimant'] : "-",
 
-                "bearings" => !empty($propData['bearings'])
-                    ? $propData['bearings'] : "-",
+                    "location" => !empty($propData['location'])
+                        ? $propData['location'] : "-",
 
-                "original_date_of_survey" => !empty($propData['original_date_of_survey'])
-                    ? $propData['original_date_of_survey'] : "-",
+                    "area" => !empty($propData['area'])
+                        ? $propData['area'] : "-",
 
-                "date_of_survey" => !empty($propData['date_of_survey'])
-                    ? $propData['date_of_survey'] : "-",
+                    "description_of_corners" => !empty($propData['description_of_corners'])
+                        ? $propData['description_of_corners'] : "-",
 
-                "date_approved" => !empty($propData['date_approved'])
-                    ? $propData['date_approved'] : "-",
+                    "bearings" => !empty($propData['bearings'])
+                        ? $propData['bearings'] : "-",
 
-                "geodetic_engineer" => !empty($propData['geodetic_engineer'])
-                    ? $propData['geodetic_engineer'] : "-"
-            ];
+                    "original_date_of_survey" => !empty($propData['original_date_of_survey'])
+                        ? $propData['original_date_of_survey'] : "-",
 
-            // Convert bearings
-            // if ($body['bearings'] === "TRUE") {
-            //     $body['bearings'] = 1;
-            // } elseif ($body['bearings'] === "") {
-            //     $body['bearings'] = 0;
-            // }
+                    "date_of_survey" => !empty($propData['date_of_survey'])
+                        ? $propData['date_of_survey'] : "-",
 
-            $propUpdateRes = $this->update_properties(
-                json_encode($body),
-                $propertyCode
-            );
+                    "date_approved" => !empty($propData['date_approved'])
+                        ? $propData['date_approved'] : "-",
 
-            $propContent = $propUpdateRes;
-            // Safely get message
-            $message = $propContent['data']['message'] ?? null;
-            // dd($message);
+                    "geodetic_engineer" => !empty($propData['geodetic_engineer'])
+                        ? $propData['geodetic_engineer'] : "-"
+                ];
 
-            if ($message === "Technical description updated successfully.") {
-                $result['success']++;
-            } else {
+                // Convert bearings
+                // if ($body['bearings'] === "TRUE") {
+                //     $body['bearings'] = 1;
+                // } elseif ($body['bearings'] === "") {
+                //     $body['bearings'] = 0;
+                // }
+
+                $propUpdateRes = $this->update_properties(
+                    json_encode($body),
+                    $encryptedPropertyCode,
+                    $syncRequestId
+                );
+
+                $propContent = $propUpdateRes;
+                // Safely get message
+                $message = $propContent['data']['message'] ?? null;
+                $itemStatus = $propContent['data']['status'] ?? null;
+                // dd($message);
+
+                if (in_array($itemStatus, ['created', 'updated', 'unchanged'], true)) {
+                    $result['success']++;
+                    $result['items'][] = [
+                        'propertyCode' => $inventory,
+                        'status' => $itemStatus,
+                        'message' => $message,
+                    ];
+                } else {
+                    $result['failed']++;
+                    $error = $propContent['error'] ?? $message ?? 'Property update failed.';
+                    $result['items'][] = [
+                        'propertyCode' => $inventory,
+                        'status' => 'failed',
+                        'message' => $error,
+                    ];
+                    $this->report_sync_progress($syncRequestId, $inventory, 'failed', $error, count($inventory_list));
+                }
+            } catch (\Throwable $exception) {
                 $result['failed']++;
-                $result['failed reason'] = $inventory. ":" . $message;
+                $result['items'][] = [
+                    'propertyCode' => $inventory,
+                    'status' => 'failed',
+                    'message' => $exception->getMessage(),
+                ];
+                $this->report_sync_progress($syncRequestId, $inventory, 'failed', $exception->getMessage(), count($inventory_list));
             }
         }
 
         return response()->json([
-            'message' => 'Property sync completed.',
+            'message' => $stoppedByProperties
+                ? 'Property sync stopped because the Properties sync run is no longer active.'
+                : 'Property sync completed.',
+            'status' => $stoppedByProperties ? 'stopped' : 'completed',
             'success' => $result['success'],
             'failed' => $result['failed'],
             'total' => $result['success'] + $result['failed'],
+            'items' => $result['items'],
         ], 200);
     }
 
-    public function update_properties($body, $propertyCode)
+    public function update_properties($body, $propertyCode, $syncRequestId)
     {
         $client = new Client([
             'timeout' => 60,
@@ -1323,6 +1419,7 @@ class MfilesController extends Controller
             'Accept' => 'application/json',
             'Content-Type' => 'application/json',
             'Authorization' => 'Bearer ' . config('storefront.property_api_key'),
+            'X-Sync-Request-ID' => $syncRequestId,
         ];
 
         $propertyURL = rtrim(
@@ -1515,6 +1612,72 @@ class MfilesController extends Controller
                     'retry_count' => $retryCount,
                 ];
             }
+        }
+    }
+
+    private function report_sync_progress($syncRequestId, $propertyCode, $status, $message = null, $total = null, $requireSuccess = false)
+    {
+        if (empty($syncRequestId)) {
+            return;
+        }
+
+        $client = new Client([
+            'timeout' => 60,
+            'connect_timeout' => 15,
+            'http_errors' => false,
+        ]);
+
+        try {
+            $response = $client->post(rtrim(config('storefront.property_url'), '/') . '/api/technical-description-sync-progress', [
+                'headers' => [
+                    'Accept' => 'application/json',
+                    'Authorization' => 'Bearer ' . config('storefront.property_api_key'),
+                    'X-Sync-Request-ID' => $syncRequestId,
+                ],
+                'json' => [
+                    'property_code' => $propertyCode,
+                    'status' => $status,
+                    'message' => $message,
+                    'total' => $total,
+                ],
+            ]);
+
+            $statusCode = $response->getStatusCode();
+
+            if ($statusCode < 200 || $statusCode >= 300) {
+                \Log::warning('Properties rejected sync progress.', [
+                    'sync_request_id' => $syncRequestId,
+                    'property_code' => $propertyCode,
+                    'progress_status' => $status,
+                    'http_status' => $statusCode,
+                    'response' => Str::limit((string) $response->getBody(), 1000),
+                ]);
+
+                if (in_array($statusCode, [401, 403, 404, 409], true)) {
+                    \Log::warning('Stopping M-Files property sync because Properties rejected the active run.', [
+                        'sync_request_id' => $syncRequestId,
+                        'property_code' => $propertyCode,
+                        'http_status' => $statusCode,
+                    ]);
+
+                    return false;
+                }
+
+                if ($requireSuccess) {
+                    return false;
+                }
+            }
+
+            return true;
+        } catch (\Throwable $exception) {
+            \Log::warning('Unable to report technical description sync progress.', [
+                'sync_request_id' => $syncRequestId,
+                'property_code' => $propertyCode,
+                'status' => $status,
+                'message' => $exception->getMessage(),
+            ]);
+
+            return $requireSuccess ? false : null;
         }
     }
 }
