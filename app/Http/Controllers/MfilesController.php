@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\PrepareMFilesInventorySync;
+use App\Services\MFilesInventorySyncState;
 use Illuminate\Http\Request;
 use GuzzleHttp\Client;
 use GuzzleHttp\Psr7\Request as GuzzleRequest;
@@ -1162,7 +1164,59 @@ class MfilesController extends Controller
         }
     }
 
-    public function sync_properties(Request $request)
+    public function sync_properties(Request $request, MFilesInventorySyncState $state)
+    {
+        $projectCode = $request->projectCode ?? null;
+        $propertyCode = $request->propertyCode ?? null;
+        $syncRequestId = $request->header('X-Sync-Request-ID');
+
+        if (! is_string($syncRequestId) || ! Str::isUuid($syncRequestId)) {
+            return response()->json([
+                'message' => 'A valid X-Sync-Request-ID header is required.',
+            ], 422);
+        }
+
+        if (filled($projectCode) === filled($propertyCode)) {
+            return response()->json([
+                'message' => 'Provide either projectCode or propertyCode, but not both.',
+            ], 422);
+        }
+
+        if (! $state->accept($syncRequestId, $projectCode, $propertyCode)) {
+            $snapshot = $state->snapshot($syncRequestId);
+
+            if (in_array($snapshot['status'] ?? null, ['queued', 'running'], true)) {
+                return response()->json([
+                    'message' => 'M-Files synchronization was already accepted.',
+                    'status' => 'accepted',
+                    'sync_request_id' => $syncRequestId,
+                ], 202);
+            }
+
+            return response()->json([
+                'message' => 'This sync request ID has already finished and cannot be reused.',
+                'status' => $snapshot['status'] ?? 'unknown',
+            ], 409);
+        }
+
+        try {
+            PrepareMFilesInventorySync::dispatch($syncRequestId, $projectCode, $propertyCode)
+                ->onConnection('database-mfiles')
+                ->onQueue('mfiles-sync');
+        } catch (\Throwable $exception) {
+            $state->forget($syncRequestId);
+
+            throw $exception;
+        }
+
+        return response()->json([
+            'message' => 'M-Files synchronization was accepted for background processing.',
+            'status' => 'accepted',
+            'sync_request_id' => $syncRequestId,
+        ], 202);
+    }
+
+    public function sync_properties_legacy(Request $request)
     {
         set_time_limit(0);
         ini_set('max_execution_time', '0');
