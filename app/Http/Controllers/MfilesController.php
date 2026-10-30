@@ -1168,6 +1168,7 @@ class MfilesController extends Controller
     {
         $projectCode = $request->projectCode ?? null;
         $propertyCode = $request->propertyCode ?? null;
+        $propertyCodes = $request->input('propertyCodes', []);
         $syncRequestId = $request->header('X-Sync-Request-ID');
 
         if (! is_string($syncRequestId) || ! Str::isUuid($syncRequestId)) {
@@ -1176,13 +1177,35 @@ class MfilesController extends Controller
             ], 422);
         }
 
-        if (filled($projectCode) === filled($propertyCode)) {
+        $validator = validator([
+            'property_codes' => $propertyCodes,
+        ], [
+            'property_codes' => ['array', 'max:5000'],
+            'property_codes.*' => ['required', 'string', 'max:255', 'distinct'],
+        ]);
+
+        if ($validator->fails()) {
             return response()->json([
-                'message' => 'Provide either projectCode or propertyCode, but not both.',
+                'message' => $validator->errors()->first(),
+                'errors' => $validator->errors(),
             ], 422);
         }
 
-        if (! $state->accept($syncRequestId, $projectCode, $propertyCode)) {
+        $propertyCodes = array_values(array_unique(array_map(
+            fn (mixed $code): string => trim((string) $code),
+            $propertyCodes,
+        )));
+        $filterCount = (filled($projectCode) ? 1 : 0)
+            + (filled($propertyCode) ? 1 : 0)
+            + ($propertyCodes !== [] ? 1 : 0);
+
+        if ($filterCount !== 1) {
+            return response()->json([
+                'message' => 'Provide exactly one of projectCode, propertyCode, or propertyCodes.',
+            ], 422);
+        }
+
+        if (! $state->accept($syncRequestId, $projectCode, $propertyCode, count($propertyCodes))) {
             $snapshot = $state->snapshot($syncRequestId);
 
             if (in_array($snapshot['status'] ?? null, ['queued', 'running'], true)) {
@@ -1200,7 +1223,7 @@ class MfilesController extends Controller
         }
 
         try {
-            PrepareMFilesInventorySync::dispatch($syncRequestId, $projectCode, $propertyCode)
+            PrepareMFilesInventorySync::dispatch($syncRequestId, $projectCode, $propertyCode, $propertyCodes)
                 ->onConnection('database-mfiles')
                 ->onQueue('mfiles-sync');
         } catch (\Throwable $exception) {

@@ -19,7 +19,7 @@ class ProcessMFilesInventory implements ShouldQueue
 
     public int $tries = 1;
 
-    public int $timeout = 1800;
+    public int $timeout = 300;
 
     public bool $failOnTimeout = true;
 
@@ -127,7 +127,7 @@ class ProcessMFilesInventory implements ShouldQueue
             'location' => $this->value($property, 'location'),
             'area' => $this->value($property, 'area'),
             'description_of_corners' => $this->value($property, 'description_of_corners'),
-            'bearings' => $this->value($property, 'bearings'),
+            'bearings' => $this->bearingsValue($property),
             'original_date_of_survey' => $this->value($property, 'original_date_of_survey'),
             'date_of_survey' => $this->value($property, 'date_of_survey'),
             'date_approved' => $this->value($property, 'date_approved'),
@@ -138,5 +138,21 @@ class ProcessMFilesInventory implements ShouldQueue
     private function value(array $data, string $key): mixed
     {
         return ! empty($data[$key]) ? $data[$key] : '-';
+    }
+
+    private function bearingsValue(array $property): mixed
+    {
+        if (! array_key_exists('bearings', $property)) {
+            return '-';
+        }
+
+        $value = $property['bearings'];
+
+        if ($value === null || (is_string($value) && in_array(trim($value), ['', '-'], true))) {
+            return '-';
+        }
+
+        // Preserve explicit false, 0, and "0" values; empty() would turn them into "-".
+        return $value;
     }
 }

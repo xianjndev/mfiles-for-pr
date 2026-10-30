@@ -8,9 +8,13 @@ class MFilesInventorySyncState
 {
     private const TTL_DAYS = 7;
 
-    public function accept(string $syncRequestId, ?string $projectCode, ?string $propertyCode): bool
-    {
-        return Cache::lock($this->lockKey($syncRequestId), 10)->block(5, function () use ($syncRequestId, $projectCode, $propertyCode): bool {
+    public function accept(
+        string $syncRequestId,
+        ?string $projectCode,
+        ?string $propertyCode,
+        int $selectedPropertyCount = 0,
+    ): bool {
+        return Cache::lock($this->lockKey($syncRequestId), 10)->block(5, function () use ($syncRequestId, $projectCode, $propertyCode, $selectedPropertyCount): bool {
             if (Cache::has($this->key($syncRequestId))) {
                 return false;
             }
@@ -19,6 +23,7 @@ class MFilesInventorySyncState
                 'status' => 'queued',
                 'project_code' => $projectCode,
                 'property_code' => $propertyCode,
+                'selected_property_count' => $selectedPropertyCount,
                 'batch_id' => null,
             ], now()->addDays(self::TTL_DAYS));
 

@@ -27,6 +27,7 @@ class PrepareMFilesInventorySync implements ShouldQueue
         public string $syncRequestId,
         public ?string $projectCode,
         public ?string $propertyCode,
+        public array $propertyCodes = [],
     ) {}
 
     public function handle(MfilesController $mfiles, PropertiesTechnicalDescriptionSyncClient $properties, MFilesInventorySyncState $state): void
@@ -34,18 +35,22 @@ class PrepareMFilesInventorySync implements ShouldQueue
         $total = 0;
 
         try {
-            $request = Request::create('/', 'GET');
-            $token = $mfiles->get_token($request);
+            if ($this->propertyCodes !== []) {
+                $inventoryList = $this->propertyCodes;
+            } else {
+                $request = Request::create('/', 'GET');
+                $token = $mfiles->get_token($request);
 
-            if (! is_array($token) || ! isset($token['token'])) {
-                throw new \RuntimeException('Unable to authenticate with M-Files.');
+                if (! is_array($token) || ! isset($token['token'])) {
+                    throw new \RuntimeException('Unable to authenticate with M-Files.');
+                }
+
+                $inventoryList = $mfiles->get_inventory_list([
+                    'x-authentication' => $token['token'],
+                    'Content-Type' => 'application/json',
+                    'Cookie' => $token['setCookie'],
+                ], $this->projectCode, $this->propertyCode);
             }
-
-            $inventoryList = $mfiles->get_inventory_list([
-                'x-authentication' => $token['token'],
-                'Content-Type' => 'application/json',
-                'Cookie' => $token['setCookie'],
-            ], $this->projectCode, $this->propertyCode);
 
             // Test 5 items
             // $inventoryList = array_slice($inventoryList, 0, 5);
