@@ -161,6 +161,78 @@ class DocumentController extends Controller
 
     }
 
+    public function generate_document_object(Request $request)
+    {
+        $get_token = $this->get_token($request);
+
+        $client = new Client();
+        $username = "rae.admin";
+        $password = "Jng@2024";
+        $headers = [
+            'X-Username'=> $username,
+            'X-Password'=> $password,
+            'X-Vault'=>"DF00F177-C725-4EB7-AC98-A557D1245361"
+        ];
+
+        $body = [
+            "PropertyValues" => [
+                [
+                    "PropertyDef" => 0,
+                    "TypedValue" => [
+                        "DataType" => 1,
+                        "Value" => Carbon::now()->timestamp."_document_generated"
+                    ]
+                ],
+                [
+                    "PropertyDef" => 22,
+                    "TypedValue" => [
+                        "DataType" => 8,
+                        "Value" => false
+                    ]
+                ],
+                [
+                    "PropertyDef" => 100,
+                    "TypedValue" => [
+                        "DataType" => 9,
+                        "Lookup" => [
+                            "Item" => 0,
+                            "Version" => -1
+                        ]
+                    ]
+                ]
+            ],
+            "Files" => []
+        ];
+
+        try {
+            $url = $this->baseURL() . '/REST/objects/0?checkIn=true';
+            $guzzleRequest = new GuzzleRequest('POST', $url, $headers, json_encode($body));
+            $res = $client->sendAsync($guzzleRequest)->wait();
+            $response = json_decode($res->getBody()->getContents(), true);
+
+            return response()->json([
+                'success'    => true,
+                'displayID'  => $response['DisplayID'] ?? null,
+            ]);
+        } catch (\Exception $e) {
+
+            logger()->error('M-Files Upload Error', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            $error = $e->getMessage();
+
+            if (method_exists($e, 'getResponse') && $e->getResponse()) {
+                $error = $e->getResponse()->getBody()->getContents();
+            }
+            return response()->json([
+                'error'   => 'Document object creation failed',
+                'details' => $error
+            ], 500);
+        }
+    }
+
     public function upload_and_view_storefront_file(Request $request)
     {
         $client = new \GuzzleHttp\Client();
@@ -177,7 +249,12 @@ class DocumentController extends Controller
         $objectId = config('mfile_sf_obj_id');
 
         $uploadFile = $request->file('uploadFile');
-        $uploadData = is_array($request->data) ? $request->data : json_decode($request->data, true);
+        $uploadData = is_array($request->data)
+                ? $request->data
+                : json_decode($request->data, true);
+        if (!is_array($uploadData)) {
+            throw new \Exception('Invalid request data.');
+        }
 
         try {
             // Step 0
@@ -224,11 +301,575 @@ class DocumentController extends Controller
             $templateProcessor = new TemplateProcessor($uploadFile->getPathname());
             $sanitizedData = collect($uploadData)
                 ->map(fn ($value) => is_array($value)
-                    ? htmlspecialchars(json_encode($value))
-                    : htmlspecialchars((string) ($value ?? ''))
+                    ? json_encode($value)
+                    : (string) ($value ?? '')
                 )
                 ->toArray();
 
+            if(in_array($sanitizedData['project_code'], config('mfiles.new_project'))){
+                $sanitizedData['new_technical_description'] = $sanitizedData['technical_description'] ?? [];
+                $technicalDescription = $sanitizedData['new_technical_description'] ?? [];
+                
+                if (is_string($technicalDescription)) {
+                    $technicalDescription = json_decode($technicalDescription, true);
+                }
+                
+                unset($sanitizedData['technical_description']);
+                unset($sanitizedData['new_technical_description']);
+
+                $phpWord = new \PhpOffice\PhpWord\PhpWord();
+        
+                $indent = new \PhpOffice\PhpWord\ComplexType\TblWidth(
+                    720,
+                    \PhpOffice\PhpWord\SimpleType\TblWidth::TWIP
+                );
+            
+                $table = new \PhpOffice\PhpWord\Element\Table([
+                    'borderColor' => 'FFFFFF',
+                    'borderSize'  => 0,
+                    'cellMargin'  => 0,
+                    'cellSpacing' => 0,
+                    'indent'      => $indent,
+                ]);
+            
+                $fontStyle = [
+                    'name' => 'Courier New',
+                    'size' => 9,
+                ];
+            
+                // Table widths
+                $labelWidth = 3000;
+                $colonWidth = 300;
+                $valueWidth = 5700;
+            
+                /*
+                |--------------------------------------------------------------------------
+                | Technical Description Values
+                |--------------------------------------------------------------------------
+                */
+                
+                $surveyPlanNo = $this->sanitizeText($technicalDescription['survey_plan_no'] ?? '');
+                $blockNo = $this->sanitizeText($technicalDescription['block_no'] ?? '');
+                $lotNo = $this->sanitizeText($technicalDescription['lot_no'] ?? '');
+                $portionOfLot = $this->sanitizeText($technicalDescription['portion_of_lot'] ?? '');
+                $lrcRecordNo = $this->sanitizeText($technicalDescription['lrc_record_no'] ?? '');
+                $landOwnerClaimant = $this->sanitizeText($technicalDescription['land_owner_claimant'] ?? '');
+                $location = $this->sanitizeText($technicalDescription['location'] ?? '');
+                $area = $this->sanitizeText($technicalDescription['area'] ?? '');
+                $descriptionOfCorners = $this->sanitizeText($technicalDescription['description_of_corners'] ?? '');
+                $originalDateOfSurvey = $this->sanitizeText($technicalDescription['original_date_of_survey'] ?? '');
+                $dateOfSurvey = $this->sanitizeText($technicalDescription['date_of_survey'] ?? '');
+                $dateApproved = $this->sanitizeText($technicalDescription['date_approved'] ?? '');
+                $geodeticEngineer = $this->sanitizeText($technicalDescription['geodetic_engineer'] ?? '');
+
+                $bearings = $this->sanitizeText($technicalDescription['bearings'] ?? '');
+
+                if($bearings===1 || $bearings==1 || $bearings=='1'){
+                    $bearings='True';
+                }
+
+                // $surveyPlanNo = 'Pcs-04-036420';
+                // $blockNo = '21';
+                // $lotNo = '7';
+            
+                // $portionOfLot = 'CONS.-SUBD. of Lot 2278, Naic Estate (Frs-04-006884); Lot 1687-B, Psd-04-296359; Lot 7 (Reserved Area), Block 21, Lot 1 (Reserved Area), Block 22 and Lot 6, Block 29, all of Psd-04-289489';
+            
+                // $lrcRecordNo = '8340';
+            
+                // $landOwnerClaimant = 'RAEMULAN LANDS, INC.';
+            
+                // $location = "Barangay of MUZON";
+            
+                // $area = 'FIFTY SEVEN (57) SQUARE METERS more or less.';
+            
+                // $descriptionOfCorners = 'Corners 1 and 5 by P.S. cyl. conc. mons. 15x40 cms. and the rest are OLD P.S. cyl. conc. mons. 15x40 cms.';
+            
+                // $bearings = 'True';
+            
+                // $originalDateOfSurvey = 'AUG. 1906 - NOV. 1907';
+            
+                // $dateOfSurvey = 'APRIL 22-23, 2026';
+            
+                // $dateApproved = 'MAY 15, 2026';
+            
+                // $geodeticEngineer = 'JOEL J. HUBAC';
+            
+            
+                /*
+                |--------------------------------------------------------------------------
+                | Survey Plan No.
+                |--------------------------------------------------------------------------
+                */
+                $table->addRow();
+            
+                $table->addCell($labelWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    'Survey Plan No.',
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+                $table->addCell($colonWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    ':',
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+                $table->addCell($valueWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    $surveyPlanNo,
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+            
+                /*
+                |--------------------------------------------------------------------------
+                | Block No.
+                |--------------------------------------------------------------------------
+                */
+                $table->addRow();
+            
+                $table->addCell($labelWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    'Block No.',
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+                $table->addCell($colonWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    ':',
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+                $table->addCell($valueWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    $blockNo,
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+            
+                /*
+                |--------------------------------------------------------------------------
+                | Lot No.
+                |--------------------------------------------------------------------------
+                */
+                $table->addRow();
+            
+                $table->addCell($labelWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    'Lot No.',
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+                $table->addCell($colonWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    ':',
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+                $table->addCell($valueWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    $lotNo,
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+            
+                /*
+                |--------------------------------------------------------------------------
+                | Portion of Lot
+                |--------------------------------------------------------------------------
+                */
+                $table->addRow();
+            
+                $table->addCell($labelWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    'Portion of Lot',
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+                $table->addCell($colonWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    ':',
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+                $table->addCell($valueWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    $portionOfLot,
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+            
+                /*
+                |--------------------------------------------------------------------------
+                | LRC Record No.
+                |--------------------------------------------------------------------------
+                */
+                $table->addRow();
+            
+                $table->addCell($labelWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    'LRC Record No.',
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+                $table->addCell($colonWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    ':',
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+                $table->addCell($valueWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    $lrcRecordNo,
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+            
+                /*
+                |--------------------------------------------------------------------------
+                | Land Owner/Claimant
+                |--------------------------------------------------------------------------
+                */
+                $table->addRow();
+            
+                $table->addCell($labelWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    'Land Owner/Claimant',
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+                $table->addCell($colonWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    ':',
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+                $table->addCell($valueWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    $landOwnerClaimant,
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+            
+                /*
+                |--------------------------------------------------------------------------
+                | Location
+                |--------------------------------------------------------------------------
+                */
+                $table->addRow();
+            
+                $table->addCell($labelWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    'Location',
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+                $table->addCell($colonWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    ':',
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+                // $locationCell = $table->addCell($valueWidth, [
+                //     'valign' => 'top',
+                // ]);
+            
+                // foreach ($location as $locationLine) {
+                //     $locationCell->addText(
+                //         $locationLine,
+                //         $fontStyle,
+                //         ['spaceAfter' => 0]
+                //     );
+                // }
+                $table->addCell($valueWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    $location,
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+            
+                /*
+                |--------------------------------------------------------------------------
+                | Area
+                |--------------------------------------------------------------------------
+                */
+                $table->addRow();
+            
+                $table->addCell($labelWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    'Area',
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+                $table->addCell($colonWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    ':',
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+                $table->addCell($valueWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    $area,
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+            
+                /*
+                |--------------------------------------------------------------------------
+                | Description of Corners
+                |--------------------------------------------------------------------------
+                */
+                $table->addRow();
+            
+                $table->addCell($labelWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    'Description of Corners',
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+                $table->addCell($colonWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    ':',
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+                $table->addCell($valueWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    $descriptionOfCorners,
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+            
+                /*
+                |--------------------------------------------------------------------------
+                | Bearings
+                |--------------------------------------------------------------------------
+                */
+                $table->addRow();
+            
+                $table->addCell($labelWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    'Bearings',
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+                $table->addCell($colonWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    ':',
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+                $table->addCell($valueWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    $bearings,
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+            
+                /*
+                |--------------------------------------------------------------------------
+                | Original Date of Survey
+                |--------------------------------------------------------------------------
+                */
+                $table->addRow();
+            
+                $table->addCell($labelWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    'Original Date of Survey',
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+                $table->addCell($colonWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    ':',
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+                $table->addCell($valueWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    $originalDateOfSurvey,
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+            
+                /*
+                |--------------------------------------------------------------------------
+                | Date of Survey
+                |--------------------------------------------------------------------------
+                */
+                $table->addRow();
+            
+                $table->addCell($labelWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    'Date of Survey',
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+                $table->addCell($colonWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    ':',
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+                $table->addCell($valueWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    $dateOfSurvey,
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+            
+                /*
+                |--------------------------------------------------------------------------
+                | Date Approved
+                |--------------------------------------------------------------------------
+                */
+                $table->addRow();
+            
+                $table->addCell($labelWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    'Date approved',
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+                $table->addCell($colonWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    ':',
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+                $table->addCell($valueWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    $dateApproved,
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+            
+                /*
+                |--------------------------------------------------------------------------
+                | Geodetic Engineer
+                |--------------------------------------------------------------------------
+                */
+                $table->addRow();
+            
+                $table->addCell($labelWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    'Geodetic Engineer',
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+                $table->addCell($colonWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    ':',
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+                $table->addCell($valueWidth, [
+                    'valign' => 'top',
+                ])->addText(
+                    $geodeticEngineer,
+                    $fontStyle,
+                    ['spaceAfter' => 0]
+                );
+            
+            
+                /*
+                |--------------------------------------------------------------------------
+                | Insert into template
+                |--------------------------------------------------------------------------
+                */
+                $templateProcessor->setComplexBlock(
+                    'technical_description',
+                    $table
+                );
+
+            }
+
+            $sanitizedData = array_map(function ($value) {
+                return htmlspecialchars($value ?? '', ENT_QUOTES, 'UTF-8');
+            }, $sanitizedData);
+           
             $templateProcessor->setValues($sanitizedData);
 
             $generatedFileName = now()->timestamp . '_' . $uploadFile->getClientOriginalName();
@@ -441,6 +1082,24 @@ class DocumentController extends Controller
         }
 
 
+    }
+
+    function sanitizeText($value): string
+    {
+        if ($value === null) {
+            return '';
+        }
+
+        $value = (string) $value;
+
+        // Remove invalid XML/control characters
+        $value = preg_replace(
+            '/[^\x09\x0A\x0D\x20-\x7F\x{A0}-\x{10FFFF}]/u',
+            '',
+            $value
+        );
+
+        return htmlspecialchars(trim($value));
     }
 
 }
