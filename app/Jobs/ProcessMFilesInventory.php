@@ -63,13 +63,32 @@ class ProcessMFilesInventory implements ShouldQueue
             $request->name = $resolvedProjectCode;
             $request->property_ids = [1293, 1294];
             $projData = $mfiles->get_document_property($request, 101, 1050);
+            
+            $request2 = Request::create('/', 'GET');
+            $request2->Documents = [
+                [
+                    'name' => $this->propertyCode,
+                    'objectID' => 119,
+                    'propertyID' => 1105,
+                    'property_ids' => [1105, 1343, 1050, 1029, 1203, 1204, 1202, 1107],
+                    'json_name' => '',
+                    'mask_field' => ['pbl', 'phase', 'project_code', 'block_no', 'lot_area', 'floor_area', 'unit_type', 'lot'],
+                ]
+            ];
+            $mfilesVertical = $mfiles->get_document_property_multi($request2, 119, 1105);
+            $verticalData = $mfilesVertical['inventory'] ?? [];
+            logger()->info('Vertical Data', ['verticalData' => $verticalData]);
+
+            if (isset($mfilesVertical['error'])) {
+                throw new RuntimeException((string) $mfilesVertical['error']);
+            }
 
             if (isset($projData['_error'])) {
                 throw new RuntimeException((string) $projData['_error']);
             }
 
             $response = $mfiles->update_properties(
-                json_encode($this->payload($propData, $projData), JSON_THROW_ON_ERROR),
+                json_encode($this->payload($propData, $projData, $verticalData), JSON_THROW_ON_ERROR),
                 EncryptedRouteParameter::fromConfig()->encrypt($this->propertyCode),
                 $this->syncRequestId,
             );
@@ -110,7 +129,7 @@ class ProcessMFilesInventory implements ShouldQueue
         );
     }
 
-    private function payload(array $property, array $project): array
+    private function payload(array $property, array $project, array $vertical): array
     {
         return [
             'company_name' => $this->value($project, 'Project Developer'),
@@ -132,6 +151,12 @@ class ProcessMFilesInventory implements ShouldQueue
             'date_of_survey' => $this->value($property, 'date_of_survey'),
             'date_approved' => $this->value($property, 'date_approved'),
             'geodetic_engineer' => $this->value($property, 'geodetic_engineer'),
+            'tower_building' => $this->value($vertical, 'phase'),
+            'floor_level' => $this->value($vertical, 'block_no'),
+            'unit_type' => $this->value($vertical, 'unit_type'),
+            'unit_id' => $this->value($vertical, 'unit_id'), // TODO: No Mapping from $vertical
+            'unit_number' => $this->value($vertical, 'lot'), 
+            'unit_area' => $this->value($vertical, 'lot_area'), 
         ];
     }
 

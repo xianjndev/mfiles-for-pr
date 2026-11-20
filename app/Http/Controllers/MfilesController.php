@@ -551,7 +551,7 @@ class MfilesController extends Controller
     //     }
     // }
 
-    public function get_document_property(Request $request, $ObjectID = null, $propertyID = null){
+    public function get_document_property(Request $request, $objectID = null, $propertyID = null){
          //added only for CS lookup
          if(config("cs.property_lookup")){
             // $pbl;
@@ -745,90 +745,56 @@ class MfilesController extends Controller
         }
     }
 
-    public function get_document_property_multi(Request $request, $ObjectID = null, $propertyID = null){
-
-        //added only for CS lookup
-        // if(config("cs.property_lookup")){
-        //     // $pbl;
-        //     try {
-
-        //         // Example API endpoint
-        //         if($request->propertyID===1050)
-        //         {
-        //             $baseURL = $this->getBaseURL($request->name);
-        //             $url = "https://everyhome.enclavewrx.io/developers/api_storefront_seller/get_project_detail/".$request->name;
-        //         }
-        //         if($request->propertyID===1105)
-        //         {
-        //             $pbl=explode("-",$request->name);
-        //             $baseURL = $this->getBaseURL($pbl[0]);
-
-        //             $url = $baseURL."api_storefront_seller/get_property_detail/".$request->name;
-        //         }
-        //         $client = new Client();
-        //         $response = $client->get($url);
-        //         $response_message = json_decode($response->getBody(), true);
-
-        //         return response()->json($response_message);
-        //     } catch (\Exception $e) {
-        //         return response()->json([
-        //             'status' => 'error',
-        //             'message' => 'Request error: ' . $e->getMessage()
-        //         ], 500);
-        //     }
-
-
-        // }
-        //end CS lookup
+    public function get_document_property_multi(Request $request, $objectID = null, $propertyID = null){
         $objectID = $objectID ?? $request->objectID;
         $propertyID = $propertyID ?? $request->propertyID;
         // dd($request->Documents[0]);
         $get_token = $this->get_token($request);
         $client = new Client();
         $headers = [
-            'x-authentication' => $get_token['token'],
-            'Content-Type' => 'application/json',
-            'Cookie' => $get_token['setCookie']
+        'x-authentication' => $get_token['token'],
+        'Content-Type' => 'application/json',
+        'Cookie' => $get_token['setCookie']
         ];
         $results=[];
         foreach($request->Documents as $document){
-            $result = null;
-            $objectURL =$this->baseURL()."/REST/objects/".$document['objectID']."?p".$document['propertyID']."=".$document['name'] ;
-            $requestObj = new GuzzleRequest('GET', $objectURL, $headers);
-            $res = $client->sendAsync($requestObj)->wait();
-            $responseBody = $res->getBody()->getContents();
-            $res = json_decode($responseBody);
-            if(count($res->Items) == 0){
-                return response()->json(['error' => 'Object not found'], 404);
-            }
-            $objID = $res->Items[0]->DisplayID;
-            foreach ($document['property_ids'] as $index =>$prop_id){
-                if(isset($document['mask_field'])&& $document['mask_field'][$index]){
-                    $prop_def['name'] = $document['mask_field'][$index];
+                $result = null;
+                $objectURL =$this->baseURL()."/REST/objects/".$document['objectID']."?p".$document['propertyID']."=".$document['name'] ;
+                $requestObj = new GuzzleRequest('GET', $objectURL, $headers);
+                $res = $client->sendAsync($requestObj)->wait();
+                $responseBody = $res->getBody()->getContents();
+                $res = json_decode($responseBody);
+                if(count($res->Items) == 0){
+                    return response()->json(['error' => 'Object not found'], 404);
                 }
-                else{
-                    $prop_def = $this->get_property_definition($headers,$prop_id);
-                }
-                $prop_value = $this->get_property_value($headers,$document['objectID']."/".$objID."/latest/properties/".$prop_id);
-                if($prop_id == '1285'){
+                $objID = $res->Items[0]->DisplayID;
+                foreach ($document['property_ids'] as $index =>$prop_id){ 
+                    if(isset($document['mask_field'])&& $document['mask_field'][$index]){
+                        $prop_def['name'] = $document['mask_field'][$index];
+                    }
+                    else{
+                        $prop_def = $this->get_property_definition($headers,$prop_id);
+                    }
+                    $prop_value = $this->get_property_value($headers,$document['objectID']."/".$objID."/latest/properties/".$prop_id);
+                    if($prop_id == '1285'){
                     $short_start = explode('Bounded on the', $prop_value);
                     $short_end = explode('point of beginning', $prop_value);
                     $prop_value = ($short_start[0] ." Bounded on the XXXX to the point of beginning".$short_end[1]);
+                    }
+    
+                    $result[$prop_def['name']] = $prop_value ;
+                   
                 }
+                // dd($result);
+                $json_name = $document['objectID']===119?"inventory":"project";
+                $results[$document['json_name']?$document['json_name']:$json_name] = $result;
+                
+                //  return response()->json($result);
+                // $results[]= response()->json($result);
 
-                $result[$prop_def['name']] = $prop_value ;
-
-            }
-            // dd($result);
-            $json_name = $document['objectID']===119?"inventory":"project";
-            $results[$document['json_name']?$document['json_name']:$json_name] = $result;
-
-            //  return response()->json($result);
-            // $results[]= response()->json($result);
-
-            // dd($headers);
-
+        // dd($headers);
         }
+        
         return $results;
     }
     public function get_document_property_single(Request $request, $ObjectID = null, $propertyID = null, $propertyValue = null, $getPropertyID = null){
