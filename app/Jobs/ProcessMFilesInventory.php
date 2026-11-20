@@ -70,9 +70,9 @@ class ProcessMFilesInventory implements ShouldQueue
                     'name' => $this->propertyCode,
                     'objectID' => 119,
                     'propertyID' => 1105,
-                    'property_ids' => [1105, 1343, 1050, 1029, 1203, 1204, 1202, 1107],
+                    'property_ids' => [1105, 1343, 1050, 1029, 1203, 1204, 1202, 1107, 1344],
                     'json_name' => '',
-                    'mask_field' => ['pbl', 'phase', 'project_code', 'block_no', 'lot_area', 'floor_area', 'unit_type', 'lot'],
+                    'mask_field' => ['pbl', 'phase', 'project_code', 'block_no', 'lot_area', 'floor_area', 'unit_type', 'lot', 'unit_id'],
                 ]
             ];
             $mfilesVertical = $mfiles->get_document_property_multi($request2, 119, 1105);
@@ -154,7 +154,7 @@ class ProcessMFilesInventory implements ShouldQueue
             'tower_building' => $this->value($vertical, 'phase'),
             'floor_level' => $this->value($vertical, 'block_no'),
             'unit_type' => $this->value($vertical, 'unit_type'),
-            'unit_id' => $this->value($vertical, 'unit_id'), // TODO: No Mapping from $vertical
+            'unit_id' => $this->value($vertical, 'unit_id'),
             'unit_number' => $this->value($vertical, 'lot'), 
             'unit_area' => $this->value($vertical, 'lot_area'), 
         ];
